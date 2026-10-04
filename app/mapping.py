@@ -19,6 +19,8 @@ SYNONYMS = {
     'country': ['country', 'shipcountry', 'billingcountry', 'negara'],
     'product': ['description', 'productname', 'itemname', 'product', 'item', 'namabarang', 'namaproduk', 'produk',
                 'stockcode', 'sku', 'productcode', 'itemcode', 'kodebarang'],  # names before codes
+    'line_total': ['total', 'linetotal', 'subtotal', 'totalprice', 'lineamount', 'amount', 'totalharga',
+                   'jumlahharga', 'nilai'],
 }
 MIN_SHARE = 0.9   # share of sampled rows that must look right
 MIN_CUSTOMER_SHARE = 0.5  # guest orders without a customer id are common (about 1 in 4 lines in UCI)
@@ -37,6 +39,8 @@ def rule_mapping(columns):
     for field in REQUIRED + OPTIONAL:
         out[field] = next((norm[s] for s in SYNONYMS[field] if s in norm and norm[s] not in used), None)
         used.add(out[field])
+    if out['line_total'] is None:
+        del out['line_total']  # only reported when the export has one (the engine computes quantity x price)
     return out
 
 
@@ -56,9 +60,11 @@ def check_values(df, mapping, sample=500):
     problems = []
     if _date_share(s[mapping['date']]) < MIN_SHARE:
         problems.append(f"date -> {mapping['date']!r}: values do not look like dates")
-    for f in ('quantity', 'price'):
-        if pd.to_numeric(s[mapping[f]], errors='coerce').notna().mean() < MIN_SHARE:
+    for f in ('quantity', 'price', 'line_total'):
+        if mapping.get(f) and pd.to_numeric(s[mapping[f]], errors='coerce').notna().mean() < MIN_SHARE:
             problems.append(f'{f} -> {mapping[f]!r}: values are not numbers')
+    if _norm(mapping['price']) in SYNONYMS['line_total']:
+        problems.append(f"price -> {mapping['price']!r}: this is a line total, not a unit price")
     if s[mapping['invoice_id']].notna().mean() < MIN_SHARE:
         problems.append(f"invoice_id -> {mapping['invoice_id']!r}: too many empty values")
     if s[mapping['customer_id']].notna().mean() < MIN_CUSTOMER_SHARE:

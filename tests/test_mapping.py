@@ -120,3 +120,36 @@ def test_provider_switch(monkeypatch):
     monkeypatch.setenv('LLM_PROVIDER', 'openai')
     with pytest.raises(LLMUnavailable, match='OPENAI_API_KEY'):
         client()
+
+
+# Ambiguous short column names (synthetic). "Total" is the line value, never the unit price.
+AMBIG = pd.DataFrame([
+    ('2030-04-01', 'N10', 'P01', 2, 5000, 10000),
+    ('2030-04-01', 'N10', 'P01', 1, 7000, 7000),
+    ('2030-04-03', 'N11', 'P02', 3, 5000, 15000),
+], columns=['Tgl', 'No Nota', 'Pelanggan', 'Qty', 'Harga', 'Total'])
+MAP_AMBIG = {'customer_id': 'Pelanggan', 'invoice_id': 'No Nota', 'date': 'Tgl', 'quantity': 'Qty',
+             'price': 'Harga', 'country': None, 'product': None, 'line_total': 'Total'}
+
+
+def test_rules_ambiguous_names():
+    assert rule_mapping(list(AMBIG.columns)) == MAP_AMBIG
+    r = propose_mapping(AMBIG, llm=_no_llm(), model='x')
+    assert r['source'] == 'rules' and r['mapping'] == MAP_AMBIG and r['problems'] == []
+
+
+def test_total_is_never_the_price_even_without_a_price_column():
+    no_price = AMBIG.drop(columns='Harga')
+    m = rule_mapping(list(no_price.columns))
+    assert m['price'] is None and m['line_total'] == 'Total'
+    r = propose_mapping(no_price, llm=_no_llm(), model='x')
+    assert r['source'] is None and "missing required keys: ['price']" in r['problems'][0]  # total-only: not supported
+
+
+def test_llm_mapping_total_to_price_is_rejected():
+    wrong = json.dumps({**MAP_AMBIG, 'price': 'Total', 'line_total': None})
+    r = propose_mapping(AMBIG, llm=FakeLLM(wrong), model='x')
+    assert 'line total, not a unit price' in r['llm_error']
+    assert r['source'] == 'rules' and r['mapping']['price'] == 'Harga'
+    ok = propose_mapping(AMBIG, llm=FakeLLM(json.dumps(MAP_AMBIG)), model='x')
+    assert ok['source'] == 'llm' and ok['mapping'] == MAP_AMBIG

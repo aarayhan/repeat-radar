@@ -7,7 +7,7 @@ from dotenv import load_dotenv
 from openai import OpenAI
 
 REQUIRED = ('customer_id', 'invoice_id', 'date', 'quantity', 'price')
-OPTIONAL = ('country', 'product')
+OPTIONAL = ('country', 'product', 'line_total')  # line_total is mapped and checked, not used by the engine
 PROVIDERS = {  # name -> (base_url, env var holding the key; None = no key needed)
     'featherless': ('https://api.featherless.ai/v1', 'FEATHERLESS_API_KEY'),
     'openai': ('https://api.openai.com/v1', 'OPENAI_API_KEY'),
@@ -53,7 +53,8 @@ def _prompt(columns, sample_rows):
         f'Each value is one column name copied exactly from the list. '
         f'Required keys: {", ".join(REQUIRED)}. Optional keys ({", ".join(OPTIONAL)}) may be null.\n'
         'customer_id = buyer id, invoice_id = order/invoice number, date = order date, '
-        'quantity = units per line, price = unit price, product = product name or code.\n'
+        'quantity = units per line, price = unit price, product = product name or code, '
+        'line_total = value of the whole line (quantity x price); a total column is never the price.\n'
         'No explanation, no markdown, no code fences.'
     )
 
