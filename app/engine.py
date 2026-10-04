@@ -19,18 +19,25 @@ def load_uci(path):
     return pd.concat(sheets.values(), ignore_index=True)
 
 
-def clean(raw):
-    """Order lines -> one row per invoice. Drops cancellations ('C' invoices), returns,
-    zero/negative prices and lines without a customer."""
-    df = raw.copy()
-    df['Invoice'] = df['Invoice'].astype(str)
-    df = df[~df['Invoice'].str.startswith('C') & (df['Quantity'] > 0) & (df['Price'] > 0)
-            & df['Customer ID'].notna()]
-    df['rev'] = df['Quantity'] * df['Price']
-    inv = (df.groupby(['Customer ID', 'Invoice'])
-             .agg(date=('InvoiceDate', 'min'), amount=('rev', 'sum')).reset_index()
-             .rename(columns={'Customer ID': 'customer_id', 'Invoice': 'invoice_id'}))
-    inv['date'] = pd.to_datetime(inv['date']).dt.normalize()
+UCI_MAPPING = {'customer_id': 'Customer ID', 'invoice_id': 'Invoice', 'date': 'InvoiceDate',
+               'quantity': 'Quantity', 'price': 'Price'}
+LINE_COLS = list(UCI_MAPPING)
+
+
+def clean(raw, mapping=UCI_MAPPING):
+    """Order lines (columns named by `mapping`, see app/mapping.py) -> one row per invoice.
+    Drops returns and cancellations (quantity <= 0), zero/negative prices, lines without a customer
+    and lines whose date does not parse. No 'C'-prefix rule: in UCI all 19,494 'C' lines already
+    have quantity <= 0, and in other exports a 'C' prefix can be a normal invoice number."""
+    df = raw[[mapping[k] for k in LINE_COLS]].set_axis(LINE_COLS, axis=1)
+    df['invoice_id'] = df['invoice_id'].astype(str)
+    df['date'] = pd.to_datetime(df['date'], errors='coerce', format='mixed')
+    df['quantity'] = pd.to_numeric(df['quantity'], errors='coerce')
+    df['price'] = pd.to_numeric(df['price'], errors='coerce')
+    df = df[(df['quantity'] > 0) & (df['price'] > 0) & df['customer_id'].notna() & df['date'].notna()]
+    df = df.assign(rev=df['quantity'] * df['price'])
+    inv = df.groupby(['customer_id', 'invoice_id']).agg(date=('date', 'min'), amount=('rev', 'sum')).reset_index()
+    inv['date'] = inv['date'].dt.normalize()
     return inv
 
 

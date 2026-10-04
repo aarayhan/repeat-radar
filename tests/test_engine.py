@@ -12,17 +12,19 @@ def test_clean_drops_bad_lines_and_sums_invoices():
         # Invoice, Quantity, Price, Customer ID, InvoiceDate
         ('1', 2, 5.0, 1.0, T('2021-01-01 10:00')),
         ('1', 1, 3.0, 1.0, T('2021-01-01 11:00')),
-        ('C2', 1, 5.0, 1.0, T('2021-01-02')),     # cancellation
+        ('C2', -1, 5.0, 1.0, T('2021-01-02')),    # cancellation (UCI cancellations have quantity < 0)
         ('3', -1, 5.0, 1.0, T('2021-01-03')),     # return
         ('4', 1, 0.0, 1.0, T('2021-01-04')),      # zero price
         ('5', 1, 5.0, np.nan, T('2021-01-05')),   # no customer
+        ('7', 1, 5.0, 1.0, 'not a date'),         # unparseable date
         (6, 1, 7.0, 1.0, T('2021-02-01 09:30')),  # numeric invoice id
+        ('CS8', 2, 1.0, 1.0, T('2021-03-01')),    # 'C' prefix with a positive quantity is a normal invoice
     ], columns=['Invoice', 'Quantity', 'Price', 'Customer ID', 'InvoiceDate'])
     inv = clean(raw).sort_values('date').reset_index(drop=True)
     assert list(inv.columns) == ['customer_id', 'invoice_id', 'date', 'amount']
-    assert inv['invoice_id'].tolist() == ['1', '6']
-    assert inv['amount'].tolist() == [13.0, 7.0]
-    assert inv['date'].tolist() == [T('2021-01-01'), T('2021-02-01')]
+    assert inv['invoice_id'].tolist() == ['1', '6', 'CS8']
+    assert inv['amount'].tolist() == [13.0, 7.0, 2.0]
+    assert inv['date'].tolist() == [T('2021-01-01'), T('2021-02-01'), T('2021-03-01')]
 
 
 def _inv(rows):

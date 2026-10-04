@@ -1,12 +1,24 @@
-"""Column mapping by LLM (Featherless, OpenAI-compatible). Output is validated in code."""
+"""Column mapping by LLM (any OpenAI-compatible provider, chosen by LLM_PROVIDER). Output is validated in code."""
 import json
 import os
 from pathlib import Path
 
+from dotenv import load_dotenv
+from openai import OpenAI
+
 REQUIRED = ('customer_id', 'invoice_id', 'date', 'quantity', 'price')
 OPTIONAL = ('country', 'product')
-BASE_URL = 'https://api.featherless.ai/v1'
-DEFAULT_MODEL = 'Qwen/Qwen2.5-7B-Instruct'
+PROVIDERS = {  # name -> (base_url, env var holding the key; None = no key needed)
+    'featherless': ('https://api.featherless.ai/v1', 'FEATHERLESS_API_KEY'),
+    'openai': ('https://api.openai.com/v1', 'OPENAI_API_KEY'),
+    'openrouter': ('https://openrouter.ai/api/v1', 'OPENROUTER_API_KEY'),
+    'ollama': ('http://localhost:11434/v1', None),
+}
+DEFAULT_MODELS = {'featherless': 'Qwen/Qwen2.5-7B-Instruct'}  # others need LLM_MODEL
+
+
+class LLMUnavailable(RuntimeError):
+    """No usable provider configured. Callers fall back to rule-based mapping."""
 
 
 def validate_mapping(text, columns):
@@ -47,20 +59,26 @@ def _prompt(columns, sample_rows):
 
 
 def client():
-    from dotenv import load_dotenv
-    from openai import OpenAI
+    """(OpenAI-compatible client, model) for LLM_PROVIDER (default featherless). Raises LLMUnavailable."""
     load_dotenv(Path(__file__).resolve().parents[1] / '.env')
-    key = os.getenv('FEATHERLESS_API_KEY')
+    name = os.getenv('LLM_PROVIDER', 'featherless').strip().lower()
+    if name not in PROVIDERS:
+        raise LLMUnavailable(f'unknown LLM_PROVIDER {name!r}; use one of {sorted(PROVIDERS)}')
+    url, key_env = PROVIDERS[name]
+    key = os.getenv(key_env) if key_env else 'not-needed'
     if not key:
-        raise RuntimeError('FEATHERLESS_API_KEY is not set (.env)')
-    return OpenAI(base_url=BASE_URL, api_key=key)
+        raise LLMUnavailable(f'{key_env} is not set (.env)')
+    model = os.getenv('LLM_MODEL') or DEFAULT_MODELS.get(name)
+    if not model:
+        raise LLMUnavailable(f'LLM_MODEL is not set for provider {name!r}')
+    return OpenAI(base_url=url, api_key=key), model
 
 
 def map_columns(columns, sample_rows, llm=None, model=None):
     """Ask the LLM for a mapping. One repair attempt, then fail visibly.
     Returns (mapping, attempts) where attempts is a list of (raw_reply, error_or_None)."""
-    llm = llm or client()
-    model = model or os.getenv('FEATHERLESS_MODEL', DEFAULT_MODEL)
+    if llm is None:
+        llm, model = client()
     messages = [{'role': 'user', 'content': _prompt(columns, sample_rows)}]
     attempts = []
     for _ in range(2):
