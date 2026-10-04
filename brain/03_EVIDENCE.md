@@ -66,7 +66,26 @@ Same 3 test windows, 10 probability bins. The threshold was fixed before the run
   - an e-commerce export (`Order Number, Order Date, Customer No, Qty Ordered, Unit Price`).
 - The value checks catch an LLM answer whose names are valid but whose columns are swapped, and fall back to the rules. Verified with a fake LLM.
 - **A real LLM has never been called.** There is no API key and no account, and no local model is available. Whether Featherless (or any provider) returns valid mappings is Unknown.
-- Limits:
-  - day-first dates (05/01/2030) are ambiguous;
-  - exports with only a line total (no quantity and price) are not supported;
-  - the synonym list is finite.
+- The rules map the short names `Tgl`, `No Nota`, `Pelanggan`, `Qty` and `Total` correctly; `Total` becomes the optional `line_total`.
+  - `Total` is never mapped to price. The rules do not do it, and the value check rejects an LLM answer that does (fake LLM). Verified (unit tests).
+
+Date reading in text columns, `parse_dates` in `app/engine.py`. Verified by unit tests on synthetic values:
+- Year-first dates (`2009-12-01`, `2009/12/01 07:45`) are read as year-month-day.
+- Year-last dates (`05/01/2030`, `05-01-2030`, `05.01.2030`):
+  - a first part above 12 means day-first;
+  - a second part above 12 means month-first;
+  - both in one column: the file is refused, and the message names an example row of each;
+  - neither: read as day-first, with a warning.
+- 2-digit years are refused ("use 4-digit years").
+- Unreadable values: up to 1% of rows are dropped with a warning that gives the count; more than 1% refuses the file.
+- A column that mixes datetime cells and text cells gets one warning with both counts. Parsing of that column is unchanged.
+- Datetime columns are not touched.
+  - UCI dates load as datetime. The cleaned UCI result is identical to H2 (36,969 invoices) and has no warnings.
+
+Remaining limits:
+- Dates Excel has already misread (day and month swapped) cannot be recovered.
+  - A column that mixes datetime and text cells gets a warning.
+  - A column Excel converted entirely to dates gets no warning, because the swap cannot be seen from the values.
+- A file with `Qty` and `Total` but no unit price is refused ("missing required keys: ['price']").
+- Exports with only a line total are not supported (`04_DECISIONS.md` decision 11).
+- The synonym list is finite.
