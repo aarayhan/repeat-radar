@@ -228,3 +228,4 @@ data/*
 *.csv
 .streamlit/secrets.toml
 *.zip
+!app/sample_data/*.csv

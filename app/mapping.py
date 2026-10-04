@@ -10,6 +10,7 @@ from app.llm import OPTIONAL, REQUIRED, map_columns, validate_mapping
 # Normalized names (lowercase, letters and digits only), in priority order.
 SYNONYMS = {
     'customer_id': ['customerid', 'customerno', 'customernumber', 'customer', 'custid', 'clientid', 'buyerid',
+                    'customeremail', 'email',
                     'kodepelanggan', 'idpelanggan', 'nopelanggan', 'pelanggan'],
     'invoice_id': ['invoice', 'invoiceno', 'invoiceid', 'invoicenumber', 'orderid', 'ordernumber', 'orderno', 'order',
                    'transactionid', 'nota', 'nonota', 'nomornota', 'faktur', 'nofaktur'],
