@@ -9,9 +9,9 @@ Submit target: Sat Oct 10, 18:00. Hard lock: 23:00.
 - [ ] First commit pushed
 
 ## H2 Mon Oct 5
-- [ ] Load and clean UCI data in `app/` (move logic from `experiments/`)
-- [ ] Features and model as functions with tests
-- [ ] **Calibration check.** If "70%" is not about 70%, fix or change the claim
+- [x] Load and clean UCI data in `app/` (move logic from `experiments/`)
+- [x] Features and model as functions with tests
+- [x] **Calibration check.** If "70%" is not about 70%, fix or change the claim (see `docs/H2_REPORT.md`; claim wording still to apply)
 - [ ] Smoke test: one Featherless call returns valid JSON for column mapping
 
 ## H3 Tue Oct 6
