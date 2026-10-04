@@ -15,8 +15,8 @@ Submit target: Sat Oct 10, 18:00. Hard lock: 23:00.
 - [ ] Smoke test: one Featherless call returns valid JSON for column mapping
 
 ## H3 Tue Oct 6
-- [ ] Audit module: AUC, top-20% hit rate vs base rate vs recency rule, refusal reasons
-- [ ] Column mapping by LLM with validation and user confirm
+- [x] Audit module: AUC, top-20% hit rate vs base rate vs recency rule, refusal reasons (plus tiers)
+- [x] Column mapping by LLM with validation and user confirm (LLM path untested for real: no key; user confirm UI is H4)
 - [ ] Decide real-user swap (see decision 7)
 
 ## H4 Wed Oct 7

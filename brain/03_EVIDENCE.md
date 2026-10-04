@@ -1,7 +1,7 @@
-# 03 Evidence (measured on 2026-10-04)
+# 03 Evidence (measured on 2026-10-04; sections D-F added in H2/H3)
 
 Dataset: UCI Online Retail II. 1,067,371 rows, Dec 2009 to Dec 2011, UK online gift-ware retailer, CC BY 4.0. Verified against the UCI page.
-Scripts: `experiments/`. Limits: one dataset, B2B wholesale, intermittent demand. Code not yet reviewed by a second person.
+Scripts: `experiments/` (A, B), `scripts/calibration.py` (D), `scripts/audit_uci.py` (E, F). Limits: one dataset, B2B wholesale, intermittent demand. Code not yet reviewed by a second person.
 
 ## A. Stock forecasting per product: did NOT hold up
 Weekly units per product, 1-week horizon. Gate decided on a 12-week validation window, evaluated on the next 12 weeks. Three windows: A (Sep-Nov 2011), B (Jun-Aug 2011), C (Mar-May 2011).
@@ -29,7 +29,44 @@ Question: of customers with at least 2 prior orders, who orders again within 56 
 | 15 Jul 2011 | 3,534 | 31% | 0.810 vs 0.751 | 71% vs 57% |
 | 15 Apr 2011 | 3,221 | 35% | 0.779 vs 0.727 | 74% vs 59% |
 
-Not yet tested: calibration, other datasets, real users.
+Reproduced exactly by `app/` (engine and audit modules) in H2 and H3. Verified.
+Not yet tested: other datasets, real users. Calibration: section D.
 
 ## C. Competitor note (for the README)
 Standard customer repeat-purchase models are common. Our claim is the audit, the refusal, and the messy input, not the model.
+
+## D. Calibration: fine on average, off in the most recent window (H2)
+Same 3 test windows, 10 probability bins. The threshold was fixed before the run (pooled ECE > 0.05, or a bin with 100+ customers off by more than 10 points).
+- Pooled: ECE 0.030, Brier 0.177. Customers scored 0.6-0.8 (n = 995): predicted 0.689 on average, 0.742 actually reordered. Verified.
+- Per window, the ECE was 0.089 (Oct 2011), 0.023 (Jul 2011) and 0.018 (Apr 2011).
+  - Oct 2011: base rate 0.433, mean prediction 0.344. Three bins were under-predicted by more than 10 points. Verified.
+  - Inference: the pre-Christmas base-rate jump is not in the features.
+- Consequence: the app shows rank tiers with measured hit rates, not probabilities (section E). Details in `docs/H2_REPORT.md`.
+
+## E. Tiers and refusals on the demo data (H3)
+- Tiers are by rank: high = top 20%, medium = 20-50%, low = rest. The hit rate is the share who ordered within 56 days, across the 3 test windows.
+- The base rate in those windows was 0.313-0.433. Verified.
+
+| Tier | Model: min-max (pooled) | Recency rule: min-max (pooled) |
+|---|---|---|
+| High | 0.708-0.803 (0.752) | 0.571-0.630 (0.599) |
+| Medium | 0.379-0.504 (0.429) | 0.423-0.583 (0.494) |
+| Low | 0.116-0.242 (0.177) | 0.144-0.264 (0.200) |
+
+- The model beats the recency rule on top-20% hit rate in all 3 windows, so the app uses the model (rule 3 not triggered). Verified.
+- The recency rule does better in the **medium** tier (0.494 vs 0.429 pooled). The model's advantage is concentrated at the top. Verified. Why: Unknown.
+- Current list (day after the last order): 4,255 customers scored (851 high, 1,276 medium, 2,128 low). 1,623 not scored, with the reason "only 1 order in the file". Verified.
+- Refusal rule 2 (insufficient history) is triggered by a 300-day synthetic file. The message is "file covers 291 days; 2 windows need at least 371". Verified (unit test).
+- The UCI "invoice starts with C" rule was dropped. All 19,494 'C' lines already have quantity ≤ 0, and the cleaned result is identical (36,969 invoices). Verified.
+
+## F. Column mapping (H3)
+- The rule-based mapping maps the real UCI columns correctly, and its values pass the checks on the first 1,000 lines. Verified.
+- It also maps two synthetic formats correctly, end to end to invoices (unit tests). Verified, but synthetic only:
+  - an Indonesian POS export (`No Nota, Tanggal, Kode Pelanggan, Jml, Harga Satuan`);
+  - an e-commerce export (`Order Number, Order Date, Customer No, Qty Ordered, Unit Price`).
+- The value checks catch an LLM answer whose names are valid but whose columns are swapped, and fall back to the rules. Verified with a fake LLM.
+- **A real LLM has never been called.** There is no API key and no account, and no local model is available. Whether Featherless (or any provider) returns valid mappings is Unknown.
+- Limits:
+  - day-first dates (05/01/2030) are ambiguous;
+  - exports with only a line total (no quantity and price) are not supported;
+  - the synonym list is finite.
