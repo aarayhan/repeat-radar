@@ -1,7 +1,8 @@
 import numpy as np
+import pandas as pd
 import pytest
 
-from app.audit import run_audit, score_now, tier_of, tier_track_record, window_metrics
+from app.audit import compare_tiers, run_audit, score_now, tier_of, tier_track_record, window_metrics
 from app.engine import features, top_k_hit
 
 
@@ -55,3 +56,17 @@ def test_audit_on_synthetic_history(make_inv):
         f = features(inv, row['origin'])
         assert row['n'] == len(f)
         assert row['base_rate'] == pytest.approx(f['y'].mean())
+
+
+def _rec(high, medium, low):
+    return pd.DataFrame({'pooled': [high, medium, low]}, index=['high', 'medium', 'low'])
+
+
+def test_compare_tiers_sentence_follows_the_numbers():
+    s = compare_tiers(_rec(0.752, 0.429, 0.177), _rec(0.599, 0.494, 0.200))   # UCI pooled numbers
+    assert 'high tier the model found more customers who ordered again (75% vs 60%' in s
+    assert 'medium tier the recency rule found more (49% vs 43%' in s
+    assert 'model left fewer buyers in its low tier (18% vs 20%)' in s
+    s = compare_tiers(_rec(0.50, 0.40, 0.30), _rec(0.60, 0.40, 0.20))
+    assert 'high tier the recency rule found more (60% vs 50%' in s and 'medium tier both found 40%' in s
+    assert 'recency rule left fewer buyers in its low tier (20% vs 30%)' in s

@@ -38,7 +38,7 @@ def template_explanation(facts, lang='en'):
                 + (f" Rata-rata {gap} hari antar pesanan." if gap is not None else ''))
     else:
         text = (f"{f['tier'].capitalize()} tier. {f['n_orders']} orders; the last one was invoice {o['invoice_id']} "
-                f"on {o['date']}, {f['days_since_last']} days ago."
+                f"on {o['date']}, {f['days_since_last']} day{'' if f['days_since_last'] == 1 else 's'} ago."
                 + (f" On average {gap} days between orders." if gap is not None else ''))
     return text, 'template'
 

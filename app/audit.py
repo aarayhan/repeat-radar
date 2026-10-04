@@ -93,6 +93,28 @@ def tier_track_record(audit, ranker):
     return rec
 
 
+def compare_tiers(model_rec, recency_rec):
+    """One sentence from the pooled tier hit rates (tier_track_record of each ranker). Compared at whole percents."""
+    pct = lambda x: int(round(x * 100))  # noqa: E731
+    parts = []
+    for t in ('high', 'medium'):
+        m, r = pct(model_rec.loc[t, 'pooled']), pct(recency_rec.loc[t, 'pooled'])
+        if m > r:
+            parts.append(f'in the {t} tier the model found more customers who ordered again ({m}% vs {r}% for the recency rule)')
+        elif r > m:
+            parts.append(f'in the {t} tier the recency rule found more ({r}% vs {m}% for the model)')
+        else:
+            parts.append(f'in the {t} tier both found {m}%')
+    m, r = pct(model_rec.loc['low', 'pooled']), pct(recency_rec.loc['low', 'pooled'])
+    if m < r:
+        parts.append(f'the model left fewer buyers in its low tier ({m}% vs {r}%)')
+    elif r < m:
+        parts.append(f'the recency rule left fewer buyers in its low tier ({r}% vs {m}%)')
+    else:
+        parts.append(f'both left {m}% buyers in the low tier')
+    return 'Pooled over the test windows: ' + '; '.join(parts) + '.'
+
+
 def score_now(inv, ranker='model', horizon=HORIZON):
     """Current contact list at the day after the last order. Trained on origin - h*{1,2,3}, as in the backtest.
     Shows rank and tier only, no probability."""
