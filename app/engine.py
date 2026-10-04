@@ -65,11 +65,15 @@ def predict(fitted, df):
     return m.predict_proba((df[FEATURES] - mu) / sd)[:, 1]
 
 
-def backtest(inv, horizon=HORIZON):
-    """Three test origins (end - h, end - h - 91, end - h - 182). Each is trained only on
-    origins o - h*{1,2,3}, whose outcome windows end before o."""
+def default_origins(inv, horizon=HORIZON):
+    """Three test origins: end - h, end - h - 91, end - h - 182."""
     end = inv['date'].max()
-    origins = [end - pd.Timedelta(days=horizon + k) for k in (0, 91, 182)]
+    return [end - pd.Timedelta(days=horizon + k) for k in (0, 91, 182)]
+
+
+def backtest(inv, horizon=HORIZON, origins=None):
+    """Each test origin o is trained only on origins o - h*{1,2,3}, whose outcome windows end before o."""
+    origins = default_origins(inv, horizon) if origins is None else origins
     out = []
     for o in origins:
         te = features(inv, o, horizon)
