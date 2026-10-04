@@ -218,3 +218,13 @@ __marimo__/
 
 # Streamlit
 .streamlit/secrets.toml
+
+# Project-specific
+.env
+data/*
+!data/README.md
+!data/.gitkeep
+*.xlsx
+*.csv
+.streamlit/secrets.toml
+*.zip
