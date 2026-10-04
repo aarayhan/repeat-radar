@@ -3,6 +3,8 @@
 Moved from experiments/customer_repeat.py without changing the method.
 Invoice-level standard schema: customer_id, invoice_id, date, amount.
 """
+import datetime
+
 import numpy as np
 import pandas as pd
 from sklearn.linear_model import LogisticRegression
@@ -39,8 +41,16 @@ def parse_dates(col):
     if pd.api.types.is_datetime64_any_dtype(col):
         return col, []
     vals = col.dropna()
-    if pd.api.types.is_numeric_dtype(col) or not vals.map(lambda v: isinstance(v, str)).all():
-        return pd.to_datetime(col, errors='coerce', format='mixed'), []
+    is_text = vals.map(lambda v: isinstance(v, str))
+    if pd.api.types.is_numeric_dtype(col) or not is_text.all():
+        out = pd.to_datetime(col, errors='coerce', format='mixed')
+        n_dt = int(vals.map(lambda v: isinstance(v, (datetime.date, np.datetime64))).sum())
+        n_text = int(is_text.sum())
+        if n_dt and n_text:  # warning only, parsing is unchanged
+            return out, [f'{n_dt} sel tanggal dan {n_text} sel teks. Kolom tanggal berisi campuran sel tanggal dan '
+                         'teks. Excel mungkin sudah salah membaca sebagian tanggal (hari dan bulan tertukar). '
+                         'Periksa file asli.']
+        return out, []
     s = col.astype('string').str.strip().replace('', pd.NA)
     out = pd.Series(pd.NaT, index=col.index, dtype='datetime64[ns]')
     warnings = []

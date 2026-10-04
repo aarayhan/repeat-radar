@@ -67,3 +67,32 @@ def test_clean_returns_warnings_and_refuses():
     assert 'day-first' in inv.attrs['warnings'][0]
     with pytest.raises(ValueError, match='mixes'):
         clean(raw.assign(InvoiceDate=['13/01/2030', '01/13/2030']))
+
+
+MIXED = [T('2030-01-05'), '06/02/2030', T('2030-03-01 10:00'), None, 'not a date', T('2030-04-02')]
+
+
+def test_mixed_column_warns_once_with_counts():
+    out, w = parse_dates(pd.Series(MIXED, dtype=object))
+    assert len(w) == 1
+    assert w[0].startswith('3 sel tanggal dan 2 sel teks.') and 'Periksa file asli.' in w[0]
+
+
+def test_mixed_column_parsing_unchanged():
+    col = pd.Series(MIXED, dtype=object)
+    out, _ = parse_dates(col)
+    before = pd.to_datetime(col, errors='coerce', format='mixed')   # the behavior before the warning was added
+    pd.testing.assert_series_equal(out, before)
+
+
+def test_pure_datetime_and_pure_text_columns_get_no_mixed_warning():
+    as_object = pd.Series([T('2030-01-05'), T('2030-02-06'), None], dtype=object)
+    assert parse_dates(as_object)[1] == []
+    assert parse_dates(pd.Series([T('2030-01-05'), T('2030-02-06')]))[1] == []
+    assert parse_dates(pd.Series(['2030-01-05', '2030-02-06'], dtype=object))[1] == []
+
+
+def test_clean_reports_mixed_warning():
+    raw = pd.DataFrame({'Invoice': ['1', '2'], 'Quantity': [1, 1], 'Price': [2.0, 3.0],
+                        'Customer ID': [1, 1], 'InvoiceDate': [T('2030-01-05'), '2030-02-06']})
+    assert clean(raw).attrs['warnings'][0].startswith('1 sel tanggal dan 1 sel teks.')
