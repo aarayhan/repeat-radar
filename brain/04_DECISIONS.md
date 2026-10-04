@@ -13,6 +13,13 @@ Format: date, decision, reason, evidence level.
 8. **Mentor.** One ticket sent on Discord with the stock result and the question about when practitioners trust a forecast. Answer is a bonus, not a dependency.
 9. **UI: Streamlit.** Fastest for a solo builder with a weak UI background. Recommendation, revisit if blocked.
 10. **Sponsor tools.** Featherless for LLM calls. n8n optional. Others skipped. None are required by the rules.
+11. **Not supported yet: exports with only a line total (no quantity and no unit price).**
+    - What happens now: the mapping recognizes the total column (`line_total`), but price is a required field, so the app refuses the file with "missing required keys: ['price']" instead of guessing.
+    - Reasons:
+      - The engine is built and verified on quantity × price. It uses quantity ≤ 0 to drop returns and cancellations, and price ≤ 0 to drop free or zero lines. With only a total, those rules would have to be rebuilt on the sign of the total and re-verified.
+      - We have seen no real export of this shape (no real user yet; decision 7). Building for it would be guessing at a format.
+      - Feature freeze is at the end of H5, and the time goes to the three screens.
+    - Evidence: Inference. Revisit if a real user's export has this shape.
 
 ## Open questions
 - Is the model calibrated? Test in H2.
