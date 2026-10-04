@@ -28,7 +28,6 @@ Computed on the user's data, at several origins:
 - AUC of the model vs the recency rule ("most recent buyers first")
 - Top-20% hit rate vs the base rate vs the recency rule
 - Number of customers not scored, with reasons
-- TODO (H2): calibration check. Is a "70%" prediction right about 70% of the time?
 
 ## Refusal rules
 1. Fewer than 2 prior orders: not scored.
