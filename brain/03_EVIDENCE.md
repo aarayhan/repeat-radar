@@ -158,3 +158,14 @@ Setup: Qwen2.5-7B on Featherless, 50 development customers (seed 42). Details an
 - The single repair attempt returned the identical text in 21 of 22 cases at temperature 0, so the repair as built does not work. Verified.
 - 17 of the 28 passing drafts used no specific fact (no number, date or exact product name). Verified.
 - Unknown: the verifier cannot see paraphrased product names. It has not been tested in Indonesian or with other models.
+
+## J. Holdout intervals (2026-10-05)
+Paired bootstrap, 1,000 resamples per window, on the saved holdout predictions. The holdout was reproduced once with frozen code and matched exactly (`04_DECISIONS.md` decision 13).
+
+| Window | Holdout customers / in top 20% | Top-20% hit, model minus recency | 95% interval |
+|---|---|---|---|
+| Oct 2011 | 767 / 153 | +0.229 | +0.157 to +0.314 |
+| Jul 2011 | 710 / 142 | +0.134 | +0.063 to +0.232 |
+| Apr 2011 | 641 / 128 | +0.062 | -0.023 to +0.164 |
+
+The model's win on the holdout is clear in Oct and Jul 2011. **It is not conclusive in Apr 2011.** Verified.

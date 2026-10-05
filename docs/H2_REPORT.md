@@ -210,3 +210,15 @@ Result: all 21 printed lines match the original output exactly (n, base rate, AU
 RESULT: EXACT MATCH on all 21 lines. Wrote holdout_predictions.csv (2118 rows), sha256 c6f733af5d13fb87e933290813560db1934191e5b41b9418a32029d9cb0e325c
 ```
 `data/holdout_predictions.csv` is gitignored. SHA-256: `c6f733af5d13fb87e933290813560db1934191e5b41b9418a32029d9cb0e325c`.
+
+**Bootstrap intervals (section C).** `python scripts/holdout_bootstrap.py`. The script uses only the saved predictions (sha256 checked) and does no re-fit. Real output:
+```
+1000 paired resamples per window, seed 42
+window        n top20 n  model recency   diff    2.5%   97.5%  verdict
+2011-10-14  767     153  0.817   0.588  0.229   0.157   0.314  model better (interval above 0)
+2011-07-15  710     142  0.648   0.514  0.134   0.063   0.232  model better (interval above 0)
+2011-04-15  641     128  0.695   0.633  0.062  -0.023   0.164  not conclusive (interval includes 0)
+```
+- The point estimates equal the saved holdout values.
+- **The April 2011 win (+6.2 points, 128 customers in the top 20%) is not conclusive:** its 95% interval includes 0.
+- October and July are clearly in the model's favor.
