@@ -30,6 +30,14 @@ Format: date, decision, reason, evidence level.
       - the Oct 2011 window was already seen while designing the method;
       - the data ends Dec 2011, so a later, time-based holdout is impossible. This holdout is by customer, not by time.
     - Evidence: Verified (our experiment).
+13. **Holdout reproduced once with frozen code (2026-10-05), only to save per-customer predictions.**
+    - The single holdout run had saved only aggregates. On the owner's instruction it was reproduced once:
+      - from a git worktree at commit `04ebc87`, the code of the original run;
+      - with the same venv and the same `data/invoices.csv`, unchanged since 2026-10-04;
+      - by `scripts/holdout_reproduce.py`.
+    - All 21 printed lines matched the original output exactly, so the predictions were accepted: `data/holdout_predictions.csv`, 2,118 rows, sha256 `c6f733af5d13fb87e933290813560db1934191e5b41b9418a32029d9cb0e325c`.
+    - The marker `data/holdout_used.txt` was not touched.
+    - The per-customer rows are used only for the bootstrap intervals (`docs/H2_REPORT.md` section 7), and for nothing else.
 
 ## Open questions
 - Is the model calibrated? Answered in H2: on average yes, not in the most recent window (`03_EVIDENCE.md` D, H).

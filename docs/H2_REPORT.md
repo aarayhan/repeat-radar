@@ -197,3 +197,16 @@ verifier reasons on first attempts: {'promise or claim outside the facts': 22}
   - the drafts are not yet wired into the Streamlit UI, which still shows the template draft.
 
 Full drafts with customer ids are in `data/draft_eval.json` and the printed output in `data/draft_eval_output.txt` (both gitignored).
+
+## 7. Holdout reproduction and bootstrap intervals (2026-10-05)
+**Reproduction.** The single holdout run had saved only aggregates. It was reproduced once to save per-customer predictions (`brain/04_DECISIONS.md` decision 13):
+- frozen code: a git worktree at `04ebc87`, removed afterwards;
+- the same venv: python 3.13.14, numpy 2.5.3, pandas 3.0.6, scikit-learn 1.9.1. The original run did not record versions, so they cannot be compared; the venv was not changed in between;
+- the same `data/invoices.csv` (sha256 `d6b43cfa242f2cb293d29f18cbd0ca52cd297551140eff00ef945568ada3821e`, last modified 2026-10-04);
+- `scripts/holdout_reproduce.py`, which never touches the marker.
+
+Result: all 21 printed lines match the original output exactly (n, base rate, AUC, top-20% hit rates, ECE, tier tables, rule 3 line). The script printed them side by side; every line is marked `|` (equal).
+```
+RESULT: EXACT MATCH on all 21 lines. Wrote holdout_predictions.csv (2118 rows), sha256 c6f733af5d13fb87e933290813560db1934191e5b41b9418a32029d9cb0e325c
+```
+`data/holdout_predictions.csv` is gitignored. SHA-256: `c6f733af5d13fb87e933290813560db1934191e5b41b9418a32029d9cb0e325c`.
