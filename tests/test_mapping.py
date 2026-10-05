@@ -127,6 +127,7 @@ AMBIG = pd.DataFrame([
     ('2030-04-01', 'N10', 'P01', 2, 5000, 10000),
     ('2030-04-01', 'N10', 'P01', 1, 7000, 7000),
     ('2030-04-03', 'N11', 'P02', 3, 5000, 15000),
+    ('2030-04-09', 'N12', 'P01', 1, 5000, 5000),     # a second invoice, so customers < invoices (check 3)
 ], columns=['Tgl', 'No Nota', 'Pelanggan', 'Qty', 'Harga', 'Total'])
 MAP_AMBIG = {'customer_id': 'Pelanggan', 'invoice_id': 'No Nota', 'date': 'Tgl', 'quantity': 'Qty',
              'price': 'Harga', 'country': None, 'product': None, 'line_total': 'Total'}
@@ -153,3 +154,37 @@ def test_llm_mapping_total_to_price_is_rejected():
     assert r['source'] == 'rules' and r['mapping']['price'] == 'Harga'
     ok = propose_mapping(AMBIG, llm=FakeLLM(json.dumps(MAP_AMBIG)), model='x')
     assert ok['source'] == 'llm' and ok['mapping'] == MAP_AMBIG
+
+
+# Invoice consistency checks (any mapping, LLM or rules)
+UCI_LIKE = pd.DataFrame([
+    ('536365', '85123A', 'WHITE HANGING HEART', 6, '2010-12-01 08:26', 2.55, 17850, 'United Kingdom'),
+    ('536365', '71053', 'WHITE METAL LANTERN', 6, '2010-12-01 08:26', 3.39, 17850, 'United Kingdom'),
+    ('536366', '85123A', 'WHITE HANGING HEART', 6, '2010-12-01 08:28', 2.55, 17851, 'United Kingdom'),
+    ('536367', '71053', 'WHITE METAL LANTERN', 2, '2010-12-02 09:00', 3.39, 17850, 'France'),
+    ('536368', '22752', 'SET 7 BABUSHKA', 1, '2010-12-03 10:00', 7.65, 17852, 'France'),
+], columns=['Invoice', 'StockCode', 'Description', 'Quantity', 'InvoiceDate', 'Price', 'Customer ID', 'Country'])
+UCI_MAP = {'customer_id': 'Customer ID', 'invoice_id': 'Invoice', 'date': 'InvoiceDate', 'quantity': 'Quantity',
+           'price': 'Price', 'country': 'Country', 'product': 'Description'}
+
+
+def test_structure_checks_pass_on_true_mapping():
+    from app.mapping import check_structure
+    assert check_structure(UCI_LIKE, UCI_MAP) == []
+
+
+def test_invoice_mapped_to_stockcode_is_caught():
+    from app.mapping import check_structure
+    p = check_structure(UCI_LIKE, {**UCI_MAP, 'invoice_id': 'StockCode', 'product': 'Description'})
+    assert any(x.startswith('check 1 failed') for x in p) and any(x.startswith('check 2 failed') for x in p)
+    assert any('check' in x for x in check_values(UCI_LIKE, {**UCI_MAP, 'invoice_id': 'StockCode'}))
+
+
+def test_each_structure_check_names_itself():
+    from app.mapping import check_structure
+    two_days = UCI_LIKE.assign(InvoiceDate=['2010-12-01 08:26', '2010-12-02 08:26'] + list(UCI_LIKE['InvoiceDate'][2:]))
+    assert [x[:7] for x in check_structure(two_days, UCI_MAP)] == ['check 2']
+    one_inv_each = UCI_LIKE.assign(Invoice=['1', '1', '2', '3', '4'], **{'Customer ID': [1, 1, 2, 3, 4]})
+    assert [x[:7] for x in check_structure(one_inv_each, UCI_MAP)] == ['check 3']
+    swapped = {**UCI_MAP, 'customer_id': 'Invoice', 'invoice_id': 'Customer ID'}
+    assert 'check 3' in ' '.join(check_structure(UCI_LIKE, swapped))

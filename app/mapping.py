@@ -70,6 +70,31 @@ def check_values(df, mapping, sample=500):
         problems.append(f"invoice_id -> {mapping['invoice_id']!r}: too many empty values")
     if s[mapping['customer_id']].notna().mean() < MIN_CUSTOMER_SHARE:
         problems.append(f"customer_id -> {mapping['customer_id']!r}: too many empty values")
+    return problems + check_structure(df, mapping)
+
+
+def check_structure(df, mapping):
+    """Invoice-level consistency on the whole file, for any proposed mapping (LLM or rules).
+    1. each invoice_id belongs to exactly one customer_id; 2. each invoice_id has one date (same day);
+    3. customer_id has fewer distinct values than invoice_id. Returns problems naming the failed check."""
+    inv, cust, date = mapping['invoice_id'], mapping['customer_id'], mapping['date']
+    d = pd.DataFrame({'inv': df[inv], 'cust': df[cust],
+                      'day': pd.to_datetime(df[date], errors='coerce', format='mixed').dt.normalize()})
+    d = d[d['inv'].notna()]
+    g = d.groupby('inv')
+    problems = []
+    n = int((g['cust'].nunique() > 1).sum())
+    if n:
+        problems.append(f'check 1 failed (one customer per invoice): {n:,} values of {inv!r} belong to more '
+                        f'than one value of {cust!r}')
+    n = int((g['day'].nunique() > 1).sum())
+    if n:
+        problems.append(f'check 2 failed (one date per invoice): {n:,} values of {inv!r} have more than one '
+                        f'day in {date!r}')
+    n_cust, n_inv = d['cust'].nunique(), d['inv'].nunique()
+    if n_cust >= n_inv:
+        problems.append(f'check 3 failed (fewer customers than invoices): {cust!r} has {n_cust:,} distinct '
+                        f'values, {inv!r} has {n_inv:,}')
     return problems
 
 
