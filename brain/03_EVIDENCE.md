@@ -121,3 +121,31 @@ Remaining limits:
 - For the recency rule: high 80%, medium 80%, low 29%.
 
 In both files the recency rule had the higher medium-tier hit rate, as on UCI (section E). Verified on synthetic data only.
+
+## H. Locked customer holdout on UCI (2026-10-05)
+- Split: salted hash of the customer id, 20% holdout (`app/engine.is_holdout`): 4,718 development customers and 1,160 holdout customers.
+- Same 3 origins and the same method as table B. Script: `scripts/holdout_eval.py`.
+
+| Window | All customers (table B): n, base, AUC model/recency, top-20% model/recency, ECE | Development 80% | Holdout 20% (run once) |
+|---|---|---|---|
+| 14 Oct 2011 | 3,859, 0.433, 0.765/0.712, 0.803/0.630, 0.089 | 3,092, 0.433, 0.768/0.716, 0.806/0.644, 0.087 | 767, 0.433, 0.757/0.694, 0.817/0.588, 0.099 |
+| 15 Jul 2011 | 3,534, 0.313, 0.810/0.751, 0.708/0.571, 0.023 | 2,824, 0.321, 0.816/0.758, 0.725/0.589, 0.021 | 710, 0.282, 0.786/0.718, 0.648/0.514, 0.066 |
+| 15 Apr 2011 | 3,221, 0.349, 0.779/0.727, 0.738/0.592, 0.018 | 2,580, 0.347, 0.782/0.727, 0.746/0.579, 0.025 | 641, 0.357, 0.761/0.733, 0.695/0.633, 0.027 |
+
+Tier hit rates, pooled (min-max):
+
+| | High | Medium | Low |
+|---|---|---|---|
+| Development, model | 0.761 (0.725-0.806) | 0.432 (0.387-0.509) | 0.176 (0.120-0.239) |
+| Holdout, model | 0.735 (0.669-0.818) | 0.418 (0.326-0.502) | 0.189 (0.108-0.259) |
+| Holdout, recency rule | 0.557 (0.500-0.602) | 0.494 (0.382-0.598) | 0.204 (0.128-0.282) |
+
+On the holdout, the cutoffs come from development scores and the model is fit on development customers only.
+
+- On the holdout, the model beats the recency rule on top-20% hit rate in all 3 windows, so rule 3 is not triggered. Verified.
+- The holdout is a little weaker than development in Jul and Apr 2011 (top-20% 0.648 vs 0.725, 0.695 vs 0.746). Its calibration error is higher in every window (ECE 0.099 / 0.066 / 0.027). Verified.
+- Again the recency rule has the higher medium-tier hit rate (0.494 vs 0.418). Verified.
+- Limits:
+  - Oct 2011 was already seen during design.
+  - The data ends Dec 2011, so no later, time-based holdout is possible. This holdout separates customers, not time.
+  - The holdout is one public dataset; n = 641 to 767 customers per window.

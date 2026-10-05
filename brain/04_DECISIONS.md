@@ -21,7 +21,17 @@ Format: date, decision, reason, evidence level.
       - Feature freeze is at the end of H5, and the time goes to the three screens.
     - Evidence: Inference. Revisit if a real user's export has this shape.
 
+## 2026-10-05
+12. **Locked customer holdout (mentor advice).**
+    - 20% of customers are held out by a salted hash of the customer id (`app/engine.is_holdout`, salt `repeat-radar-holdout-v1`). The salt never changes.
+    - Holdout customers are excluded from fitting, tier cutoffs, calibration checks, and every decision from now on. All future decisions use development (80%) numbers only.
+    - The holdout was run once on 2026-10-05, after the method was fixed; `data/holdout_used.txt` blocks a second run. Result: the model still beat the recency rule in all 3 windows (`03_EVIDENCE.md` H). Nothing was changed after seeing it.
+    - Limits:
+      - the Oct 2011 window was already seen while designing the method;
+      - the data ends Dec 2011, so a later, time-based holdout is impossible. This holdout is by customer, not by time.
+    - Evidence: Verified (our experiment).
+
 ## Open questions
-- Is the model calibrated? Test in H2.
-- Does Featherless support reliable structured JSON on the chosen model? Test in H2.
+- Is the model calibrated? Answered in H2: on average yes, not in the most recent window (`03_EVIDENCE.md` D, H).
+- Does Featherless support reliable structured JSON on the chosen model? Partly answered 2026-10-05: 5 of 5 smoke runs returned valid JSON, but 2 of 5 mapped the invoice id to the wrong column (`docs/H2_REPORT.md`).
 - Is an optional kos dataset usable as a refusal example? Needs the owner's permission and anonymization. Not committed.
