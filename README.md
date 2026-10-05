@@ -31,7 +31,41 @@ Everything in this repository was created after kickoff (Oct 3, 2026). No code i
 
 ## What works and what does not
 
-_To be filled in as the build progresses. Be specific and honest._
+Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (UCI Online Retail II). No real user has tried the app.
+
+**Works**
+- The Streamlit app runs end to end without an API key:
+  - upload a CSV/XLSX, or use one of two synthetic sample files;
+  - confirm the column mapping;
+  - see the contact list in three tiers;
+  - see the audit.
+
+  Tested with Streamlit's AppTest.
+- The ranking beats the "most recent buyers first" rule on the UCI backtest, in all 3 windows, on top-20% hit rate:
+  - all customers: 80% / 71% / 74% vs 63% / 57% / 59%;
+  - a locked holdout of 20% of customers, run once: 82% / 65% / 70% vs 59% / 51% / 63%.
+- The app shows each tier's measured hit rate instead of a probability, and refuses to score when evidence is weak:
+  - customers with fewer than 2 orders;
+  - files with too little history;
+  - if the model does not beat the simple rule, it says so and uses the rule.
+- Column mapping by rules works on 3 differently shaped exports (UCI and two synthetic ones).
+- Text dates are read safely: day-first and month-first are detected, conflicting orders and 2-digit years are refused, and unreadable rows are counted.
+
+**Does not work, or is weaker than it sounds**
+- The contact list does not show "the chance a customer reorders". Probabilities were off by about 9 points in the most recent test window (calibration error 0.089; 0.099 on the holdout), so only tier hit rates are shown.
+- The LLM column mapping returns valid JSON (5 of 5 runs), but put the invoice id in the wrong column in 2 of 5 runs. The user must check the mapping on screen 1.
+- LLM follow-up drafts:
+  - 28 of 50 passed our verifier on the first try;
+  - the 22 rejections were all false alarms of our banned-word list ("feel free", "offer");
+  - the repair attempt changed nothing;
+  - most passing drafts were generic.
+
+  The app still shows a fixed template draft, not the LLM draft.
+- The LLM explanation on screen 2 has not been checked against a real model; without a key it uses a template.
+- In the middle tier, the simple recency rule finds more returning customers than the model (49% vs 43% on all customers). The model's advantage is in the top tier.
+- One dataset, B2B gift-ware, 2009-2011. The data ends in 2011, so there is no test on later time periods. The October 2011 window was seen while designing the method.
+- Not deployed yet.
+- Exports with only a line total (no quantity and unit price) are not supported.
 
 ## Data
 
