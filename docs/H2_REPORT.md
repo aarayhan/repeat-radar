@@ -296,3 +296,23 @@ LLM run 5: correct
 all 5 LLM runs identical: True -> 1 effective run
 
 LLM runs where LLM and rules agreed on every required field: 10; of those, both wrong: 0
+```
+
+**Result:**
+
+| File | Rules | LLM, 5 runs (identical, so 1 effective run) |
+|---|---|---|
+| UCI | correct | correct on all required fields; the optional `country` was left empty in all runs |
+| Variant A (Indonesian) | correct | correct |
+| Variant B (English) | wrong: `Customer Account` not recognized, customer_id empty; **caught** (missing required field) | correct |
+
+- Wrong and NOT caught: 0, for both rules and LLM.
+- The LLM and rules agreed on every required field in 10 of 15 LLM runs; both wrong in 0 of those.
+- **On these 3 files the rule-based mapping is less accurate than the LLM** (it missed one field on variant B). It is not more accurate.
+- The earlier smoke-test errors (invoice_id → `StockCode`, 2 of 5) came from 3 synthetic sample rows. With real rows the LLM was right 5 of 5. That kind of error is now caught by checks 1 and 2.
+- n is small: 3 files, all from one dataset.
+
+**App policy** (`propose_mapping` → `needs_choice`):
+- If the LLM and rules disagree on a required field, or one of them leaves it empty, screen 1 shows both side by side and keeps "Confirm mapping" disabled until the user picks one to start from. Tested with AppTest.
+- Without an LLM key, only the rules' proposal exists and nothing changes.
+- On variant B this policy would trigger, because the rules left customer_id empty.
