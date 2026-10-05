@@ -1,0 +1,18 @@
+{
+  "_note": "True column mapping per file. Written and committed before any LLM call on the variants. A list means any of these is correct (product may be a name or a code). null means the field does not exist in the file.",
+  "uci": {
+    "file": "data/online_retail_II.xlsx",
+    "customer_id": "Customer ID", "invoice_id": "Invoice", "date": "InvoiceDate", "quantity": "Quantity",
+    "price": "Price", "country": "Country", "product": ["Description", "StockCode"], "line_total": null
+  },
+  "variant_a_indonesian": {
+    "file": "data/variants/variant_a_indonesian.csv",
+    "customer_id": "ID Pelanggan", "invoice_id": "No Faktur", "date": "Tanggal Transaksi", "quantity": "Jumlah",
+    "price": "Harga Satuan", "country": "Negara", "product": ["Nama Barang", "Kode Barang"], "line_total": null
+  },
+  "variant_b_english": {
+    "file": "data/variants/variant_b_english.csv",
+    "customer_id": "Customer Account", "invoice_id": "Order No", "date": "Order Date", "quantity": "Qty",
+    "price": "Unit Price", "country": "Country", "product": ["Product Name", "SKU"], "line_total": null
+  }
+}
