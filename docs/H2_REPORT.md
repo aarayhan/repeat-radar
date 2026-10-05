@@ -141,3 +141,59 @@ rule 3 on holdout: model beats recency on top-20% hit in every window: True
   - the Oct 2011 window was seen during design;
   - the data ends Dec 2011, so no time-based holdout is possible;
   - this is one dataset.
+
+## 6. Verified follow-up drafts (`app/drafts.py`)
+**What was reused** from `app/explain.py`:
+- the date logic of `customer_facts`;
+- the "LLM words it, code checks it, template on failure" pattern, with a source label;
+- the `(client, model)` tuple from `app/llm.client()`;
+- `FakeLLM` in the tests.
+
+**Facts object** (code only), the only content a draft may use:
+- customer id;
+- last order date;
+- days since the last order;
+- up to 3 usual products (bought in the most distinct invoices);
+- typical gap (median days between orders);
+- tier;
+- the tier's measured hit rate (development data).
+
+**Verifier** (code). For each draft it checks:
+- every number is one of the facts (days, gap, hit-rate %, year, customer id), including the number words two to twelve, dozen and hundred;
+- every date (ISO, numeric, or with a month name) is the last order date;
+- no product name from the data's catalogue (5,198 names, at least 8 characters) appears unless it is one of the usual products;
+- no word from this explicit list appears (whole words, case-insensitive):
+
+> discount, off, sale, free, complimentary, gift, voucher, coupon, promo, promotion, offer, deal, deals, price, prices, priced, pricing, cheap, cheaper, cost, save, saving, savings, £, $, €, stock, restock, restocked, available, availability, limited, deadline, expire, expires, expiry, last chance, hurry, until, ends, guarantee, guaranteed, delivery, deliver, shipping, ship, new arrival, new arrivals, exclusive, tomorrow, next week, this week, weekend, monday, tuesday, wednesday, thursday, friday, saturday, sunday
+
+When a draft fails, there is one repair call that passes the verifier's errors back. If it still fails, the plain template is shown, labeled `template`.
+
+**Evaluation:** `python scripts/draft_eval.py`, Qwen2.5-7B on Featherless, temperature 0. The sample was 50 development customers (seed 42; no holdout customers): 8 high, 12 medium and 30 low tier. Real output:
+```
+model Qwen/Qwen2.5-7B-Instruct | ranker model | 50 development customers, seed 42 | catalogue 5198 products
+passed first try: 28 of 50 | passed after repair: 0 of 50 | rejected (template shown): 22 of 50 | API errors (template shown): 0
+JSON failures: 0 replies in 0 drafts | LLM calls: 72
+seconds per draft: mean 2.8, median 3.1, max 5.9
+verifier reasons on first attempts: {'promise or claim outside the facts': 22}
+```
+**3 worst failures.** Customer ids are redacted; product names are from the public catalogue. The repair returned the same text in all three.
+1. `"Hi there! It's been a while since your last order. We hope you're doing well. Feel free to reach out if you're ready to place another order."`. Verifier: `promise or claim outside the facts: 'free'`.
+2. `"... Feel free to drop by again if you need any of your usual products like the cake stand or fairy cake cases."`. Verifier: `'free'`.
+3. `"... We noticed you ordered with us last on December 5, 2011. We'd love to have you back and offer your usual products like LIGHT GARLAND BUTTERFILES PINK and SET 7 BABUSHKA NESTING BOXES. Drop by anytime!"`. Verifier: `'offer'`.
+
+**Reading of the result:**
+- **All 22 rejections are false positives of the keyword list, not real errors.** 19 came from the idiom "feel free" and 3 from "offer" used as a verb. On a first attempt the verifier found no invented number, date or product, and no real promise.
+- **The repair did not work.** At temperature 0, 21 of the 22 repair replies were identical to the first reply.
+- **Most passing drafts are generic.** Of the 28, only 6 contain a number or date and 8 an exact usual-product name; 17 contain neither.
+- No change was made after seeing these results.
+- Possible fixes, to decide before any re-run:
+  - allow "feel free" and the verb "offer";
+  - repair at a non-zero temperature, or with a stronger instruction;
+  - require at least one fact in the draft.
+- Not tested:
+  - drafts in Indonesian;
+  - other models;
+  - paraphrased product names (for example "cake stand"), which the verifier cannot detect;
+  - the drafts are not yet wired into the Streamlit UI, which still shows the template draft.
+
+Full drafts with customer ids are in `data/draft_eval.json` and the printed output in `data/draft_eval_output.txt` (both gitignored).

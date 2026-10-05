@@ -149,3 +149,12 @@ On the holdout, the cutoffs come from development scores and the model is fit on
   - Oct 2011 was already seen during design.
   - The data ends Dec 2011, so no later, time-based holdout is possible. This holdout separates customers, not time.
   - The holdout is one public dataset; n = 641 to 767 customers per window.
+
+## I. Verified LLM drafts on UCI (2026-10-05)
+Setup: Qwen2.5-7B on Featherless, 50 development customers (seed 42). Details and raw output: `docs/H2_REPORT.md` section 6.
+- Results: 28 of 50 passed the verifier on the first try, 0 passed after repair, 22 were rejected (template shown).
+- No JSON failures and no API errors; 2.8 s per draft on average. Verified.
+- All 22 rejections were false positives of the banned-word list ("feel free" 19, the verb "offer" 3). No invented number, date or product was found. Verified.
+- The single repair attempt returned the identical text in 21 of 22 cases at temperature 0, so the repair as built does not work. Verified.
+- 17 of the 28 passing drafts used no specific fact (no number, date or exact product name). Verified.
+- Unknown: the verifier cannot see paraphrased product names. It has not been tested in Indonesian or with other models.
