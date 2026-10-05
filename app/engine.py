@@ -4,6 +4,7 @@ Moved from experiments/customer_repeat.py without changing the method.
 Invoice-level standard schema: customer_id, invoice_id, date, amount.
 """
 import datetime
+import hashlib
 
 import numpy as np
 import pandas as pd
@@ -11,6 +12,23 @@ from sklearn.linear_model import LogisticRegression
 
 HORIZON = 56  # predict an order within the next 8 weeks
 FEATURES = ['recency', 'tenure', 'n90', 'lograv', 'logn']
+HOLDOUT_SALT = 'repeat-radar-holdout-v1'  # fixed: changing it would leak the holdout into development
+HOLDOUT_SHARE = 0.2
+
+
+def is_holdout(customer_id):
+    """Deterministic customer-level split: SHA-256 of salt + id, holdout if it falls in the bottom 20%.
+    Whole-number floats are treated like ints (UCI ids load as 12345.0)."""
+    if isinstance(customer_id, (float, np.floating)) and float(customer_id).is_integer():
+        customer_id = int(customer_id)
+    h = hashlib.sha256(f'{HOLDOUT_SALT}:{customer_id}'.encode()).digest()
+    return int.from_bytes(h[:8], 'big') / 2 ** 64 < HOLDOUT_SHARE
+
+
+def split_holdout(inv):
+    """(development invoices, holdout invoices), split by customer."""
+    hold = inv['customer_id'].map(is_holdout).astype(bool)
+    return inv[~hold], inv[hold]
 
 
 def load_uci(path):

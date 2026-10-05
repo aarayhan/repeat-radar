@@ -79,3 +79,18 @@ def test_calibration_and_ece():
     assert t.loc['0.7-0.8', 'obs'] == 0.5
     assert t.loc['0.7-0.8', 'gap'] == pytest.approx(-0.25)
     assert ece(t) == pytest.approx((2 * 0.05 + 2 * 0.25 + 1 * 0.0) / 5)
+
+
+def test_holdout_split_is_stable_disjoint_and_about_20pct():
+    from app.engine import is_holdout, split_holdout
+    ids = list(range(10000))
+    first = [is_holdout(i) for i in ids]
+    assert first == [is_holdout(i) for i in ids]                       # stable across calls
+    assert [is_holdout(float(i)) for i in ids[:500]] == first[:500]     # 12345.0 == 12345
+    assert 0.18 < sum(first) / len(ids) < 0.22
+    inv = pd.DataFrame({'customer_id': [i % 300 for i in range(900)], 'invoice_id': [str(i) for i in range(900)],
+                        'date': pd.Timestamp('2030-01-01'), 'amount': 1.0})
+    dev, hold = split_holdout(inv)
+    assert set(dev['customer_id']).isdisjoint(hold['customer_id'])
+    assert len(dev) + len(hold) == len(inv)
+    assert sorted(hold['customer_id'].unique()) == sorted(c for c in range(300) if is_holdout(c))
