@@ -222,3 +222,77 @@ window        n top20 n  model recency   diff    2.5%   97.5%  verdict
 - The point estimates equal the saved holdout values.
 - **The April 2011 win (+6.2 points, 128 customers in the top 20%) is not conclusive:** its 95% interval includes 0.
 - October and July are clearly in the model's favor.
+
+## 8. Column mapping: checks, variants, LLM vs rules (2026-10-05)
+**New checks** run on any proposed mapping, LLM or rules (`app/mapping.check_structure`, part of `check_values`):
+1. each invoice_id value belongs to exactly one customer_id;
+2. each invoice_id has one date (same day);
+3. customer_id has fewer distinct values than invoice_id.
+
+A failed check rejects the mapping and the message names the check. Unit tests cover the true UCI mapping passing, invoice_id mapped to `StockCode` (fails checks 1 and 2), and each check on its own. The `AMBIG` test fixture had 2 customers and 2 invoices, so check 3 correctly fired; one extra order line was added to it.
+
+**Variants** (`scripts/make_mapping_variants.py`, data in `data/variants/`, gitignored):
+- made from a UCI sample (300 customers with seed 42, plus 500 lines without a customer): 39,595 lines, 2,591 invoices;
+- A has Indonesian column names, B English ones; both use a different column order than UCI;
+- decoy id columns: a unique line number (`No Urut`, `Line ID`) and a warehouse code;
+- the true mapping, `scripts/mapping_truth.json`, was committed (812004b) before any LLM call.
+
+**Evaluation**, `python scripts/mapping_eval.py`. Real output:
+```
+LLM Qwen/Qwen2.5-7B-Instruct, temperature 0 (app setting), 5 runs per file; rules once per file
+
+===== uci (1,067,371 rows, columns: ['Invoice', 'StockCode', 'Description', 'Quantity', 'InvoiceDate', 'Price', 'Customer ID', 'Country'])
+field        truth                        rules                  LLM runs 1-5
+customer_id  Customer ID                  ok Customer ID         ok Customer ID | ok Customer ID | ok Customer ID | ok Customer ID | ok Customer ID
+invoice_id   Invoice                      ok Invoice             ok Invoice | ok Invoice | ok Invoice | ok Invoice | ok Invoice
+date         InvoiceDate                  ok InvoiceDate         ok InvoiceDate | ok InvoiceDate | ok InvoiceDate | ok InvoiceDate | ok InvoiceDate
+quantity     Quantity                     ok Quantity            ok Quantity | ok Quantity | ok Quantity | ok Quantity | ok Quantity
+price        Price                        ok Price               ok Price | ok Price | ok Price | ok Price | ok Price
+country      Country                      ok Country             XX None | XX None | XX None | XX None | XX None
+product      ['Description', 'StockCode'] ok Description         ok StockCode | ok StockCode | ok StockCode | ok StockCode | ok StockCode
+line_total   None                         ok None                ok None | ok None | ok None | ok None | ok None
+rules: correct []
+LLM run 1: correct  
+LLM run 2: correct  
+LLM run 3: correct  
+LLM run 4: correct  
+LLM run 5: correct  
+all 5 LLM runs identical: True -> 1 effective run
+
+===== variant_a_indonesian (39,595 rows, columns: ['No Urut', 'Tanggal Transaksi', 'ID Pelanggan', 'Kode Barang', 'Nama Barang', 'Jumlah', 'Harga Satuan', 'No Faktur', 'Negara', 'Kode Gudang'])
+field        truth                        rules                  LLM runs 1-5
+customer_id  ID Pelanggan                 ok ID Pelanggan        ok ID Pelanggan | ok ID Pelanggan | ok ID Pelanggan | ok ID Pelanggan | ok ID Pelanggan
+invoice_id   No Faktur                    ok No Faktur           ok No Faktur | ok No Faktur | ok No Faktur | ok No Faktur | ok No Faktur
+date         Tanggal Transaksi            ok Tanggal Transaksi   ok Tanggal Transaksi | ok Tanggal Transaksi | ok Tanggal Transaksi | ok Tanggal Transaksi | ok Tanggal Transaksi
+quantity     Jumlah                       ok Jumlah              ok Jumlah | ok Jumlah | ok Jumlah | ok Jumlah | ok Jumlah
+price        Harga Satuan                 ok Harga Satuan        ok Harga Satuan | ok Harga Satuan | ok Harga Satuan | ok Harga Satuan | ok Harga Satuan
+country      Negara                       ok Negara              ok Negara | ok Negara | ok Negara | ok Negara | ok Negara
+product      ['Nama Barang', 'Kode Barang'] ok Nama Barang         ok Kode Barang | ok Kode Barang | ok Kode Barang | ok Kode Barang | ok Kode Barang
+line_total   None                         ok None                ok None | ok None | ok None | ok None | ok None
+rules: correct []
+LLM run 1: correct  
+LLM run 2: correct  
+LLM run 3: correct  
+LLM run 4: correct  
+LLM run 5: correct  
+all 5 LLM runs identical: True -> 1 effective run
+
+===== variant_b_english (39,595 rows, columns: ['Line ID', 'Order No', 'SKU', 'Customer Account', 'Order Date', 'Product Name', 'Unit Price', 'Qty', 'Country', 'Warehouse Code'])
+field        truth                        rules                  LLM runs 1-5
+customer_id  Customer Account             XX None                ok Customer Account | ok Customer Account | ok Customer Account | ok Customer Account | ok Customer Account
+invoice_id   Order No                     ok Order No            ok Order No | ok Order No | ok Order No | ok Order No | ok Order No
+date         Order Date                   ok Order Date          ok Order Date | ok Order Date | ok Order Date | ok Order Date | ok Order Date
+quantity     Qty                          ok Qty                 ok Qty | ok Qty | ok Qty | ok Qty | ok Qty
+price        Unit Price                   ok Unit Price          ok Unit Price | ok Unit Price | ok Unit Price | ok Unit Price | ok Unit Price
+country      Country                      ok Country             ok Country | ok Country | ok Country | ok Country | ok Country
+product      ['Product Name', 'SKU']      ok Product Name        ok Product Name | ok Product Name | ok Product Name | ok Product Name | ok Product Name
+line_total   None                         ok None                ok None | ok None | ok None | ok None | ok None
+rules: wrong, caught by checks ['customer_id', "missing required keys: ['customer_id']"]
+LLM run 1: correct  
+LLM run 2: correct  
+LLM run 3: correct  
+LLM run 4: correct  
+LLM run 5: correct  
+all 5 LLM runs identical: True -> 1 effective run
+
+LLM runs where LLM and rules agreed on every required field: 10; of those, both wrong: 0

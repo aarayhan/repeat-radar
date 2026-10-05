@@ -113,20 +113,33 @@ def screen_upload():
         st.caption(f"LLM not used: {p['llm_error']}")
     st.caption('If an LLM key is configured, the column names and 3 sample rows are sent to the LLM provider.')
 
+    start, choice = p['mapping'], 'default'
+    if p['needs_choice']:   # LLM and rules disagree on a required field, or one leaves it empty: user must pick
+        st.warning('The LLM and the built-in rules disagree on a required field (or one of them left it empty). '
+                   'Check both and pick one to start from.')
+        st.dataframe(pd.DataFrame({'Field': list(REQUIRED + OPTIONAL),
+                                   'LLM': [str(p['llm'].get(f) or '') for f in REQUIRED + OPTIONAL],
+                                   'Rules': [str(p['rules'].get(f) or '') for f in REQUIRED + OPTIONAL]}),
+                     hide_index=True)
+        choice = st.radio('Start from', ['LLM proposal', 'Rules proposal'], index=None, key=f'pick_{key[:12]}')
+        start = {'LLM proposal': p['llm'], 'Rules proposal': p['rules'], None: {}}[choice]
+
     mapping = {}
     cols = st.columns(4)
     for i, field in enumerate(REQUIRED + OPTIONAL):
-        guess = p['mapping'].get(field)
+        guess = start.get(field)
         options = [NONE] + columns
         pick = cols[i % 4].selectbox(field + (' *' if field in REQUIRED else ''), options,
                                      index=options.index(guess) if guess in columns else 0,
-                                     key=f'map_{field}_{key[:12]}')
+                                     key=f'map_{field}_{key[:12]}_{choice}')
         mapping[field] = None if pick == NONE else pick
     try:
         validate_mapping(json.dumps(mapping), columns)
         problems = check_values(raw, mapping)
     except ValueError as e:
         problems = [str(e)]
+    if choice is None:
+        problems = ['Pick the LLM or the rules proposal above before confirming.']
     for msg in problems:
         st.error(msg)
     if st.button('Confirm mapping', key='confirm', disabled=bool(problems), type='primary'):

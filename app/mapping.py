@@ -107,19 +107,27 @@ def _checked(mapping, columns, df):
 
 
 def propose_mapping(df, llm=None, model=None, n_sample_rows=3):
-    """LLM first (if configured), rules as fallback. source is 'llm', 'rules', or None (user must map by hand).
-    Only n_sample_rows rows are sent to the LLM provider."""
+    """Both proposals: LLM (if configured) and rules. Default: the LLM's if it passes every check, else the rules'
+    if they pass, else source None (user must map by hand). Only n_sample_rows rows are sent to the LLM provider.
+    needs_choice: the LLM and rules disagree on a required field, or one of them leaves it empty; the app then shows
+    both and blocks until the user picks."""
     columns = [str(c) for c in df.columns]
     df = df.set_axis(columns, axis=1)
-    llm_error = None
+    rules = rule_mapping(columns)
+    rules_problems = _checked(rules, columns, df)
+    llm_map, llm_problems, llm_error = None, [], None
     try:
-        m, _ = map_columns(columns, df.head(n_sample_rows).astype(str).values.tolist(), llm=llm, model=model)
-        problems = check_values(df, m)
-        if not problems:
-            return {'mapping': m, 'source': 'llm', 'problems': [], 'llm_error': None}
-        llm_error = 'LLM mapping failed the value checks: ' + '; '.join(problems)
+        llm_map, _ = map_columns(columns, df.head(n_sample_rows).astype(str).values.tolist(), llm=llm, model=model)
+        llm_problems = check_values(df, llm_map)
+        if llm_problems:
+            llm_error = 'LLM mapping failed the value checks: ' + '; '.join(llm_problems)
     except RuntimeError as e:  # LLMUnavailable, or failed twice
         llm_error = str(e)
-    m = rule_mapping(columns)
-    problems = _checked(m, columns, df)
-    return {'mapping': m, 'source': None if problems else 'rules', 'problems': problems, 'llm_error': llm_error}
+    needs_choice = llm_map is not None and any(
+        llm_map.get(f) is None or rules.get(f) is None or llm_map.get(f) != rules.get(f) for f in REQUIRED)
+    if llm_map is not None and not llm_problems:
+        mapping, source, problems = llm_map, 'llm', []
+    else:
+        mapping, source, problems = rules, (None if rules_problems else 'rules'), rules_problems
+    return {'mapping': mapping, 'source': source, 'problems': problems, 'llm_error': llm_error,
+            'llm': llm_map, 'rules': rules, 'needs_choice': needs_choice}

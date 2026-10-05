@@ -188,3 +188,20 @@ def test_each_structure_check_names_itself():
     assert [x[:7] for x in check_structure(one_inv_each, UCI_MAP)] == ['check 3']
     swapped = {**UCI_MAP, 'customer_id': 'Invoice', 'invoice_id': 'Customer ID'}
     assert 'check 3' in ' '.join(check_structure(UCI_LIKE, swapped))
+
+
+def test_disagreement_needs_a_choice():
+    swapped = json.dumps({**MAP_B, 'quantity': 'Unit Price', 'price': 'Qty Ordered'})   # passes value checks
+    r = propose_mapping(FMT_B, llm=FakeLLM(swapped), model='x')
+    assert r['needs_choice'] and r['llm']['quantity'] == 'Unit Price' and r['rules'] == MAP_B
+    agree = propose_mapping(FMT_B, llm=FakeLLM(json.dumps(MAP_B)), model='x')
+    assert not agree['needs_choice']
+    no_llm = propose_mapping(FMT_B, llm=_no_llm(), model='x')
+    assert not no_llm['needs_choice'] and no_llm['llm'] is None
+
+
+def test_one_side_empty_needs_a_choice():
+    cols_b = FMT_B.rename(columns={'Customer No': 'Account Holder'})          # rules cannot map it
+    llm_answer = json.dumps({**MAP_B, 'customer_id': 'Account Holder'})
+    r = propose_mapping(cols_b, llm=FakeLLM(llm_answer), model='x')
+    assert r['rules']['customer_id'] is None and r['needs_choice']

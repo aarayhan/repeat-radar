@@ -47,3 +47,24 @@ def test_each_sample_end_to_end(no_llm, sample):
     windows = at.dataframe[0].value
     assert len(windows) >= 2 and {'AUC model', 'AUC recency', 'Base rate'} <= set(windows.columns)
     assert any(m.value.startswith('Pooled over the test windows') for m in at.markdown)
+
+
+def test_disagreement_blocks_confirm_until_user_picks(no_llm, monkeypatch):
+    import json as _json
+    import streamlit as st
+    import app.mapping as mapping_mod
+    swapped = {'customer_id': 'customer_email', 'invoice_id': 'order_id', 'date': 'order_date',
+               'quantity': 'unit_price', 'price': 'quantity', 'country': None, 'product': None}
+    monkeypatch.setattr(mapping_mod, 'map_columns', lambda *a, **k: (swapped, []))
+    st.cache_data.clear()
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    assert not at.exception
+    assert any('disagree' in w.value for w in at.warning)
+    assert at.button(key='confirm').disabled
+    at.radio[0].set_value('Rules proposal').run()
+    assert not at.exception and not at.button(key='confirm').disabled
+    at.button(key='confirm').click().run()
+    assert any('Mapping confirmed' in s.value for s in at.success)
+    st.cache_data.clear()

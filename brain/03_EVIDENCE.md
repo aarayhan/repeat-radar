@@ -169,3 +169,10 @@ Paired bootstrap, 1,000 resamples per window, on the saved holdout predictions. 
 | Apr 2011 | 641 / 128 | +0.062 | -0.023 to +0.164 |
 
 The model's win on the holdout is clear in Oct and Jul 2011. **It is not conclusive in Apr 2011.** Verified.
+
+## K. Column mapping on UCI and two UCI-derived variants (2026-10-05)
+Setup: true mappings in `scripts/mapping_truth.json`, committed before any LLM call. The LLM (Qwen2.5-7B, temperature 0) was run 5 times per file; all 5 runs were identical, so each counts as 1 effective run. Rules were run once per file.
+- Rules were correct on UCI and the Indonesian variant. On the English variant they left customer_id empty (the column is `Customer Account`); the app catches this. Verified.
+- The LLM was correct on every required field of all 3 files. It left the optional country empty on UCI. Verified.
+- No wrong mapping went uncaught. Verified, but only 3 files from one dataset.
+- New invoice checks (one customer and one day per invoice, fewer customers than invoices) catch the earlier smoke-test error (invoice id → StockCode). Verified (unit test).
