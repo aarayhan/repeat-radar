@@ -68,3 +68,35 @@ def test_disagreement_blocks_confirm_until_user_picks(no_llm, monkeypatch):
     at.button(key='confirm').click().run()
     assert any('Mapping confirmed' in s.value for s in at.success)
     st.cache_data.clear()
+
+
+class _PromptFake:
+    """Stand-in LLM: refuses mapping (rules are used), answers the draft prompt, gives no usable explanation."""
+    def __init__(self):
+        self.chat = self.completions = self
+
+    def create(self, messages, **kw):
+        prompt = messages[0]['content']
+        if 'Map the columns' in prompt:
+            raise ConnectionError('mapping not faked')
+        text = '{"message": "Hi! We hope all is well. Let us know when you would like to order again."}' \
+            if 'follow-up message' in prompt else 'no'
+        msg = type('M', (), {'content': text})
+        return type('R', (), {'choices': [type('C', (), {'message': msg, 'finish_reason': 'stop'})]})
+
+
+def test_verified_llm_draft_is_labelled(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_PromptFake(), 'fake'))
+    st.cache_data.clear()
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    at.button(key='confirm').click().run()
+    _go(at, '2. Customers')
+    assert not at.exception and not at.error
+    captions = [c.value for c in at.caption]
+    assert 'Message source: llm' in captions and any(c.startswith('Checked by code') for c in captions)
+    assert 'Explanation source: template' in captions
+    st.cache_data.clear()

@@ -15,6 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # `streamlit run app/streamlit_app.py` puts app/ on the path, not the repo root
 from app.audit import compare_tiers, recommend, tier_track_record  # noqa: E402
 from app.engine import clean  # noqa: E402
+from app.drafts import draft_facts, llm_draft, usual_products  # noqa: E402
 from app.explain import customer_facts, llm_explanation, template_message  # noqa: E402
 from app.llm import OPTIONAL, REQUIRED, LLMUnavailable, client, validate_mapping  # noqa: E402
 from app.mapping import check_values, propose_mapping  # noqa: E402
@@ -56,7 +57,20 @@ def analyse(key, mapping_json, _raw):
     out = {'inv': inv, 'warnings': inv.attrs.get('warnings', []), **recommend(inv)}
     if out['audit']['status'] == 'ok':
         out['records'] = {r: tier_track_record(out['audit'], r) for r in ('model', 'recency')}
+    m = json.loads(mapping_json)
+    if m.get('product'):   # products are only used for the facts of a draft
+        lines = pd.DataFrame({'customer_id': _raw[m['customer_id']], 'invoice_id': _raw[m['invoice_id']],
+                              'product': _raw[m['product']]}).dropna()
+        out['lines'] = lines.assign(invoice_id=lines['invoice_id'].astype(str),
+                                    product=lines['product'].astype(str).str.strip())
+        out['catalogue'] = sorted(set(out['lines']['product']))
     return out
+
+
+@st.cache_data(show_spinner='Writing a draft and checking it...', max_entries=256)
+def verified_draft(key, facts_json, _catalogue):
+    """LLM draft checked by code (app/drafts.py), template if no LLM or if it fails twice."""
+    return llm_draft(json.loads(facts_json), llm_client(), _catalogue)
 
 
 def llm_client():
@@ -218,9 +232,21 @@ def screen_customers():
     text, source = llm_explanation(facts, 'en', llm_client())
     st.write(text)
     st.caption(f'Explanation source: {source}')
-    msg, msg_source = template_message(facts, 'id' if lang == 'Indonesian' else 'en')
+    if lang == 'English':    # verified LLM drafts were evaluated in English only (docs/H2_REPORT.md section 9)
+        lines = r.get('lines')
+        products = usual_products(lines[lines['customer_id'] == cust]) if lines is not None else []
+        dfacts = draft_facts(inv[inv['customer_id'] == cust], products, cust, tier, rec.loc[tier, 'pooled'],
+                             as_of=inv['date'].max() + pd.Timedelta(days=1))
+        d = verified_draft(st.session_state['confirmed'][0], json.dumps(dfacts), r.get('catalogue', ()))
+        msg, msg_source = d['text'], d['source']
+    else:
+        msg, msg_source = template_message(facts, 'id')
     st.text_area('Draft message', msg, key=f'msg_{cust}_{lang}')
     st.caption(f'Message source: {msg_source}')
+    if msg_source != 'template':
+        st.caption('Checked by code: every number, date and product matches this customer\'s facts, and no blocked '
+                   'promise (discount, free shipping, stock, deadline...) appears. The check cannot catch every '
+                   'claim, so read it before sending.')
 
 
 # ---------- screen 3: audit ----------
