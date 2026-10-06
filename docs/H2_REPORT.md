@@ -316,3 +316,13 @@ LLM runs where LLM and rules agreed on every required field: 10; of those, both 
 - If the LLM and rules disagree on a required field, or one of them leaves it empty, screen 1 shows both side by side and keeps "Confirm mapping" disabled until the user picks one to start from. Tested with AppTest.
 - Without an LLM key, only the rules' proposal exists and nothing changes.
 - On variant B this policy would trigger, because the rules left customer_id empty.
+
+## 9. Draft verifier, run 2: pass criterion (written before running)
+These definitions were fixed and committed before run 2:
+- **Verified:** passes the code verifier (blocked phrases, invented products, numbers, dates, day counts).
+- **Specific:** verified, and mentions at least one usual product (normalized match) or the exact day count.
+- **Generic:** verified but not specific.
+- **Good:** verified AND specific.
+- **Target:** at least 40 of 50 drafts good after the one repair attempt.
+- **If below target:** the app keeps the template as the default draft, and the README says the LLM drafts are not reliable yet.
+- Run 1 is recomputed from its saved output with the same definitions. That is a recomputation, not a re-run.
