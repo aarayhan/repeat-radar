@@ -116,3 +116,20 @@ def test_verified_llm_draft_is_labelled(monkeypatch):
     assert 'Message source: llm' in captions and any(c.startswith('Checked by code') for c in captions)
     assert 'Explanation source: template' in captions
     st.cache_data.clear()
+
+
+def test_high_tier_not_due_says_no_message_needed(no_llm):
+    import streamlit as st
+    st.cache_data.clear()
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    at.button(key='confirm').click().run()
+    _go(at, '2. Customers')
+    table = at.dataframe[0].value
+    rows = table[(table['Tier'] == 'high') & (table['Next step'] == 'Not due yet')]
+    assert len(rows), 'sample has no high-tier customer who is not due'
+    at.selectbox(key='customer').set_value(rows['Customer'].iloc[0]).run()
+    infos = [i.value for i in at.info]
+    assert 'Likely to reorder on their own. No message needed yet.' in infos
+    assert any(i.startswith('Not due yet, usual gap is') for i in infos)

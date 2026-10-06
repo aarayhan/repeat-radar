@@ -246,6 +246,8 @@ def screen_customers():
     st.write(f"**Reason (for you, not in the message):** last order {row['recency']} days ago, "
              f"usual gap {gap if gap is not None else 'unknown'} days, so: {INTENT_LABEL[dfacts['intent']]}.")
     if dfacts['intent'] == 'not_due':
+        if row['tier'] == 'high':
+            st.info('Likely to reorder on their own. No message needed yet.')
         st.info(f'Not due yet, usual gap is {gap} days.')
         return
     if lang == 'English':    # verified LLM drafts were evaluated in English only (docs/H2_REPORT.md section 9)
