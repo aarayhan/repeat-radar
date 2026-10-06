@@ -18,6 +18,16 @@ On a locked holdout (20% of customers the model never saw, run once), the model'
 - One public dataset, B2B gift-ware, 2009-2011. The October window was already seen while designing the method.
 - Details: `docs/H2_REPORT.md` sections 5 and 7.
 
+### Where these numbers come from, and what the demo shows
+- **The numbers in this README come from UCI Online Retail II** (CC BY 4.0, https://archive.ics.uci.edu/dataset/502/online+retail+ii). The raw data is not in the repository.
+  - To reproduce them locally, download the file into `data/` (see `data/README.md`), then run `python scripts/calibration.py`, `python scripts/audit_uci.py` and `python scripts/build_evidence.py`.
+  - The holdout intervals come from `python scripts/holdout_bootstrap.py`, which needs the saved holdout predictions.
+  - The app's **Evidence (UCI)** page shows the same tables.
+- **The deployed app runs on two synthetic sample files.** They contain made-up customers (`scripts/make_sample_data.py`, seed 42), or your own upload. Results on the samples show how the app works; they are not evidence.
+- **The synthetic samples make the model look much better than UCI does, in absolute terms.**
+  - Top-20% hit rates are 86-97% on the samples vs 71-80% on UCI, and base rates are 45-67% vs 31-43%. The made-up customers buy at steady rates with no seasonality, so they are easier to predict.
+  - The model's lead over the recency rule is not bigger on the samples. On the Indonesian sample the model only ties the rule in 2 of 3 windows, so the app uses the rule.
+
 ## The problem
 
 Small B2B sellers keep sales history in exports and spreadsheets, but rarely see which regular customers have fallen out of their usual ordering rhythm. Repeat Radar ranks customers by how likely they are to order again within 8 weeks, and shows how often that ranking was right on the seller's own past data.

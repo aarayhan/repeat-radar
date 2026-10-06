@@ -35,8 +35,9 @@ These steps are for the owner. Nothing here has been run yet: no push, no deploy
      ```toml
      FEATHERLESS_API_KEY = "paste-your-key-here"
      LLM_SESSION_CAP = "20"
+     LLM_DAILY_CAP = "500"
      ```
-     `LLM_SESSION_CAP` is optional; 20 is the default.
+     `LLM_SESSION_CAP` (per session, default 20) and `LLM_DAILY_CAP` (whole app per day, default 500) are optional.
 
      To use another provider instead, set `LLM_PROVIDER` (`openai`, `openrouter`), `LLM_MODEL`, and that provider's key (`OPENAI_API_KEY` or `OPENROUTER_API_KEY`).
 5. Click **Deploy** and wait for the build to finish (a few minutes the first time).
@@ -52,7 +53,8 @@ These steps are for the owner. Nothing here has been run yet: no push, no deploy
 ## How the key is protected
 - The key is read from Streamlit secrets (`st.secrets`). The app copies known keys into the environment at start; locally it reads `.env` instead. No key is in the code; a test checks this.
 - Each session may make at most `LLM_SESSION_CAP` LLM requests (default 20). A file's column mapping, a customer's explanation and a customer's draft each count once; a draft with its one repair counts as one request (up to 2 API calls).
-- When the limit is reached, the app says so and uses built-in rules and templates. When the key is missing or the provider fails, the same fallbacks are used.
+- The whole app may make at most `LLM_DAILY_CAP` LLM requests per day (default 500), counted in server memory. The count resets when the app restarts or the server date changes.
+- When either limit is reached, the app says so and uses built-in rules and templates. When the key is missing or the provider fails, the same fallbacks are used.
 - Caching (`st.cache_data`) is in server memory and shared across sessions, keyed by the file's content hash. A repeated request can be served without a new API call.
 - Featherless limits concurrent calls. Under load some requests may fail; those fall back to templates.
 - If the key ever leaks: revoke it in the Featherless dashboard, create a new one, and update the Streamlit secrets.
