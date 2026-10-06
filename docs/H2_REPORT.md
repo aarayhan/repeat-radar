@@ -442,3 +442,158 @@ b7b52654614f | days 537 | products ['CREAM SWEETHEART TRAYS', 'HOME BUILDING BLO
   - "The app still shows a fixed template draft" was replaced by the run 2 result. The run 1 numbers were kept.
 - `scripts/pivot_gate.py` was moved outside the repo (`../pivot_gate_backup/`) and not committed.
 - Full test suite: 92 passed.
+
+## 11. Draft quality fixes after the hand-check, run 3 (2026-10-06)
+**Reference date.** "Days since last order" counts from the day after the last order in the uploaded file, never today's date. It is computed once, as `recency` in `audit.score_now`. That same value is used for scoring, the intent rule and the reason shown on screen. The contact list shows "Counted as of <date>, the day after the last order in your file." A test checks that a customer whose last order is on the file's last date shows 1 day and gets the intent from that value.
+
+**Non-product lines.** These are excluded from the draft facts only; model features are unchanged (`app/drafts.is_non_product`). Real output of `scripts/draft_eval_run3.py`:
+```
+non-product stock codes excluded from draft facts: 53 (listed codes 24 + gift_0001_* vouchers)
+              lines                          description
+StockCode                                               
+POST           2122                              POSTAGE
+DOT            1446                       DOTCOM POSTAGE
+M              1421                               Manual
+C2              282                             CARRIAGE
+D               177                             Discount
+S               104                              SAMPLES
+BANK CHARGES    102                         Bank Charges
+23444            81                    Next Day Carriage
+ADJUST           67  Adjustment by john on 26/01/2010 16
+AMAZONFEE        43                           AMAZON FEE
+gift_0001_20     29   Dotcomgiftshop Gift Voucher £20.00
+gift_0001_30     29   Dotcomgiftshop Gift Voucher £30.00
+PADS             19           PADS TO MATCH ALL CUSHIONS
+23574            17                       PACKING CHARGE
+CRUK             16                      CRUK Commission
+gift_0001_10     16   Dotcomgiftshop Gift Voucher £10.00
+TEST001          15              This is a test product.
+gift_0001_50      8   Dotcomgiftshop Gift Voucher £50.00
+gift_0001_40      7   Dotcomgiftshop Gift Voucher £40.00
+B                 6                      Adjust bad debt
+m                 5                               Manual
+gift_0001_80      4   Dotcomgiftshop Gift Voucher £80.00
+gift_0001_70      3   Dotcomgiftshop Gift Voucher £70.00
+22016             3  Dotcomgiftshop Gift Voucher £100.00
+ADJUST2           3   Adjustment by Peter on Jun 25 2010
+21181             2                           adjustment
+23595             2                           adjustment
+gift_0001_60      2                                     
+TEST002           2              This is a test product.
+gift_0001_90      2                                     
+21794             1                           adjustment
+22548             1                           adjustment
+21829             1                           adjustment
+17109D            1                           Adjustment
+20665             1                           adjustment
+21319             1                           adjustment
+21656             1                              samples
+85017C            1                           adjustment
+84507C            1                           adjustment
+51020A            1                           adjustment
+48189             1                           adjustment
+37327             1                           adjustment
+35818B            1                           adjustment
+22687             1                           adjustment
+22740             1                           adjustment
+21736             1                           Adjustment
+GIFT              1                                     
+DCGS0069          1                                 ebay
+DCGS0073          1                                 ebay
+DCGS0003          1                                 ebay
+DCGS0067          1                                 ebay
+C3                1                                     
+DCGS0068          1                                 ebay
+```
+The list covers the 24 listed codes, the `gift_0001_*` vouchers, and individual lines whose description is "adjustment", "samples" or "ebay" under ordinary product codes. Only those lines are left out, not the product codes themselves.
+
+**Product names in facts** are sentence case with trailing punctuation stripped ("Lunch bag black skull"). The verifier normalization is unchanged.
+
+**Intent chosen by code** (`app/drafts.intent_of`), from days since the last order and the typical gap (median days between orders):
+
+| Intent | Rule | What happens |
+|---|---|---|
+| not_due | days < 0.8 × gap | no draft; the screen shows "Not due yet, usual gap is N days" |
+| due | 0.8 to 1.5 × gap | restock reminder |
+| overdue | over 1.5 × gap, up to 365 days | check-in |
+| lapsed | over 365 days | re-introduction |
+
+Over 365 days always counts as lapsed, even if the gap is longer.
+
+Contact list (development customers, 3,411): `{'overdue': 799, 'not_due': 1591, 'due': 448, 'lapsed': 573}`.
+
+**What the LLM sees:** only the intent, the usual products and the last order date. No customer id, day count, gap or tier.
+
+**Verifier changes:**
+- Any duration is rejected, in digits or words (day, week, month, year); "a while" is allowed.
+- "drop by" is always blocked.
+- "miss you / miss working / miss your" is rejected unless the intent is overdue or lapsed.
+- "enjoying" and "hope you like" are rejected when the intent is lapsed.
+- Specific now means mentioning at least one usual product.
+
+There is one test per rule. The 15 bad and 5 good test drafts were rewritten for the new rules: all 15 bad caught, 0 good rejected.
+
+**Run 3:** 50 development customers with intent due, overdue or lapsed, seed 2027, none from runs 1 and 2. Real output:
+```
+model Qwen/Qwen2.5-7B-Instruct | 50 customers (due/overdue/lapsed), seed 2027, 100 earlier customers excluded | catalogue 5198 products
+intent       n  verified  1st try  repaired  specific  generic  good  rejected  rejection reasons (first attempt)
+due          8         8        8         0         8        0     8         0  {}
+overdue     25        25       25         0        24        1    24         0  {}
+lapsed      17        17       13         4        17        0    17         0  {}
+all         50        50       46         4        49        1    49         0  {}
+JSON failures: 0 | seconds per draft: mean 3.5
+```
+The log is in `docs/drafts_run3.jsonl` (54 attempts, hashed ids).
+
+**Important:** these automated metrics measure correctness (no invented product, number, date, duration or blocked promise), not whether a message is fit to send. "Good" here means verified and mentions a product. It does not mean a customer would be glad to receive it.
+
+**Problems visible in the 20 drafts below that the verifier does not catch.** Reported, not fixed: no tuning after seeing results.
+- Lapsed drafts asking "if you're still using our ..." still assume use. Only "enjoying" and "hope you like" are blocked.
+- "We've got some new styles if you're interested" is a claim with no fact behind it.
+- Overdue drafts say "still enjoying our ...", which the rules allow for overdue.
+- "useful addition to your inventory" assumes how the customer uses the product.
+- The openings are very repetitive across customers.
+
+**Please rate these 20 random run 3 drafts** (seed 7, ids hashed) as: send as is / small edit / not sendable.
+```
+c9b1221d5d9c | due | source llm | products ['Rain poncho retrospot', 'Card i love london', 'Queens guard coffee mug']
+   Hi there! Just a friendly reminder that it's time to restock on your usual items like the Rain poncho retrospot and Card i love london. Hope to see your order soon!
+4509fa4050ec | lapsed | source llm | products ['Blue paisley journal', 'Blue paisley notebook', 'Jumbo bag scandinavian paisley']
+   Hello again, hope you're well. Just wanted to check if you're still using our Blue paisley journal or any of the other Scandinavian paisley items.
+0b1fbcea16a6 | due | source llm | products ['Feltcraft 6 flower friends', 'Pink cream felt craft trinket box', 'Tea time party bunting']
+   Hi there, just a friendly reminder that it's time to restock on your usual items like the Feltcraft 6 flower friends and Pink cream felt craft trinket box. Let me know when you're ready to order!
+7c0d96c9b6dd | overdue | source llm | products ['Cream heart card holder', 'Gin + tonic diet metal sign', 'Ceramic cake bowl + hanging cakes']
+   Just checking in to see if you're still enjoying our Cream heart card holder. We noticed you haven't placed an order for a while and wondered if there's anything we can help with regarding the Gin + tonic diet metal sign or Ceramic cake bowl + hanging cakes.
+ae056ed9eda9 | overdue | source llm | products ['Alarm clock bakelike chocolate', 'Alarm clock bakelike green', 'Alarm clock bakelike ivory']
+   Just checking in to see if you're still interested in the Alarm clock bakelike chocolate and other usual products you've ordered in the past.
+e454166ab41b | overdue | source llm | products ['Regency cakestand 3 tier', 'Picnic basket wicker large', 'Danish rose deluxe coaster']
+   Just checking in to see if you're still enjoying our Regency cakestand 3 tier. We hope it's been a useful addition to your inventory.
+ead2b7a8652f | overdue | source llm | products ['Brocade ring purse', 'Large chinese style scissor', 'Moroccan tea glass']
+   Just checking in to see if you're still interested in the Brocade ring purse, Large chinese style scissor, or Moroccan tea glass. Hope all is well!
+8940810cbf67 | due | source llm | products ['Red diner wall clock', 'Set of 2 tea towels apple and pears']
+   Hi there, just a friendly reminder that it's time to restock on your usual items, like the Red diner wall clock and the Set of 2 tea towels apple and pears. Let me know what you need!
+77f29a6d79dd | overdue | source llm | products ['Assorted colours silk fan', 'Strawberry charlotte bag', 'Red spotty charlotte bag']
+   Just checking in to see if you're still enjoying our Assorted colours silk fan and other items. Hope all is well!
+b1a3c761b01d | overdue | source llm | products ['Cake plate lovebird pink', 'Green regency teacup and saucer', 'Pink regency teacup and saucer']
+   Just checking in to see if you're still enjoying our Cake plate lovebird pink. We hope you're finding everything to your satisfaction.
+9438bb4fb3a9 | lapsed | source llm | products ['Blue sweetheart bracelet', 'Food container set 3 love heart', '3 stripey mice feltcraft']
+   Hello again! Hope you're well. We noticed you haven't placed an order with us in a while and thought you might be interested in our Blue sweetheart bracelet.
+fb64bc887767 | overdue | source llm | products ['Assorted colour bird ornament', 'Balloons writing set', 'Enchanted bird coathanger 5 hook']
+   Just checking in to see if you're still interested in the Assorted colour bird ornament and other usual products you've ordered in the past.
+bafc86bb31c3 | due | source llm | products ['Paper chain kit vintage christmas', 'Box of 6 mini vintage crackers', 'Classic cafe sugar dispenser']
+   Hi there, just a friendly reminder that it's time to restock on your usual items like the Paper chain kit vintage christmas and Box of 6 mini vintage crackers. Let me know when you're ready to order!
+0a5985ca8ccd | due | source llm | products ['Antique glass pedestal bowl', 'Antique silver tea glass etched', 'Antique silver tea glass engraved']
+   Hello again! It's time for your usual reorder. We hope you'll consider restocking with us, perhaps some Antique glass pedestal bowl or Antique silver tea glass etched.
+ad7e174155db | overdue | source llm | products ['Blue pudding spoon', 'Drawer knob ceramic ivory', 'Hanging heart jar t-light holder']
+   Just checking in to see if you're still interested in the Blue pudding spoon and other usual items you've ordered in the past.
+c32caee9b52b | overdue | source llm | products ['Heart of wicker large', 'Heart of wicker small', '3 hearts hanging decoration rustic']
+   Just checking in to see if you're still interested in the Heart of wicker large and small or the 3 hearts hanging decoration rustic. Hope all is well!
+0764512030c6 | lapsed | source llm | products ['Assorted colour mini cases', 'Chocolate hot water bottle', 'Home building block word']
+   Hello again, we hope you're well. We noticed you haven't placed an order with us in a while and thought you might be interested in our Assorted colour mini cases.
+21803f30f417 | lapsed | source llm | products ['Colour glass. star t-light holder']
+   Hello again, we hope you're well. We noticed you haven't placed an order with us in a while and thought you might be interested in our Colour glass star t-light holder.
+ba145ff78fbd | lapsed | source llm | products ['Wood 2 drawer cabinet white finish', 'Red hanging heart t-light holder', 'White hanging heart t-light holder']
+   Hello again, hope you're well. Just wanted to check if you're still using our Wood 2 drawer cabinet white finish. We've got some new styles if you're interested.
+ba6c31a00564 | lapsed | source llm | products ['12 pencils small tube posy', '36 pencils tube posy', '75 black fairy cake cases']
+   Hello again, we hope you're well. Just checking in to see if you're still using our 12 pencils small tube posy in your projects.
+```

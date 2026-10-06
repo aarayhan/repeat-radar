@@ -183,3 +183,8 @@ Setup: verifier v2 (phrase blocking, normalized product and day-count checks; `d
 - **Run 1 recomputed** with the same definitions from its saved drafts (not re-run): 45 verified, 17 specific, 28 generic, 5 rejected ("a few days", "a year"). The new prompt (asking for the exact day count and a product) is what made drafts specific. Verified.
 - **Verifier test set:** 15 of 15 hand-written bad drafts caught, 0 of 5 good drafts rejected. Verified.
 - **Unknown:** claims the verifier has no rule for (for example "we hope you're enjoying ..."). 10 drafts are listed for a human hand-check.
+
+## M. Draft run 3: intent by code, no durations (2026-10-06)
+- **Contact list (3,411 development customers) by intent:** 1,591 not due (no draft), 448 due, 799 overdue, 573 lapsed. Verified.
+- **Run 3:** 50 customers (due/overdue/lapsed): 49 good (verified and mentions a product), 1 generic, 0 rejected. 4 of the 17 lapsed drafts needed the repair. No JSON failures. Verified.
+- **Correctness is not fitness to send.** In the 20 listed drafts, several lapsed messages still assume use ("still using"), one invents "new styles", and the openings repeat. The verifier has no rule for these. Owner rating pending. Inference.
