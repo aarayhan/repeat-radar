@@ -21,11 +21,19 @@ B, SEED = 1000, 42
 
 
 def main():
+    print(f'{B} paired resamples per window, seed {SEED}')
+    print(f"{'window':10s} {'n':>4s} {'top20 n':>7s} {'model':>6s} {'recency':>7s} {'diff':>6s} {'2.5%':>7s} {'97.5%':>7s}  verdict")
+    for r in intervals():
+        print(f"{r['window']:10s} {r['n']:4d} {r['top20_n']:7d} {r['top20_model']:6.3f} {r['top20_recency']:7.3f} "
+              f"{r['diff']:6.3f} {r['ci_low']:7.3f} {r['ci_high']:7.3f}  {r['verdict']}")
+
+
+def intervals():
+    """One dict per window: n, top-20% size, hit rates, difference and its 95% bootstrap interval, verdict."""
     assert hashlib.sha256(PREDS.read_bytes()).hexdigest() == SHA, 'predictions file changed'
     p = pd.read_csv(PREDS)
     rng = np.random.default_rng(SEED)
-    print(f'{B} paired resamples per window, seed {SEED}')
-    print(f"{'window':10s} {'n':>4s} {'top20 n':>7s} {'model':>6s} {'recency':>7s} {'diff':>6s} {'2.5%':>7s} {'97.5%':>7s}  verdict")
+    out = []
     for window, g in p.groupby('window', sort=False):
         y, sm, sr = g['label'].values, g['model_score'].values, g['recency_score'].values
         n, k = len(y), max(1, int(len(y) * 0.2))
@@ -37,7 +45,9 @@ def main():
         lo, hi = np.percentile(diffs, [2.5, 97.5])
         verdict = 'not conclusive (interval includes 0)' if lo <= 0 <= hi else 'model better (interval above 0)' \
             if lo > 0 else 'recency better (interval below 0)'
-        print(f'{window:10s} {n:4d} {k:7d} {hm:6.3f} {hr:7.3f} {hm - hr:6.3f} {lo:7.3f} {hi:7.3f}  {verdict}')
+        out.append({'window': window, 'n': n, 'top20_n': k, 'top20_model': float(hm), 'top20_recency': float(hr),
+                    'diff': float(hm - hr), 'ci_low': float(lo), 'ci_high': float(hi), 'verdict': verdict})
+    return out
 
 
 if __name__ == '__main__':

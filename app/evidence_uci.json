@@ -1,0 +1,212 @@
+{
+ "dataset": {
+  "name": "Online Retail II",
+  "source": "UCI Machine Learning Repository",
+  "url": "https://archive.ics.uci.edu/dataset/502/online+retail+ii",
+  "license": "CC BY 4.0",
+  "description": "UK online gift-ware wholesaler, Dec 2009 to Dec 2011. Raw data is not included.",
+  "customers": 5878,
+  "invoices_after_cleaning": 36969
+ },
+ "built_from_commit": "0c53057",
+ "backtest_all_customers": [
+  {
+   "window": "2011-10-14",
+   "customers": 3859,
+   "base_rate": 0.433,
+   "auc_model": 0.765,
+   "auc_recency": 0.712,
+   "top20_model": 0.803,
+   "top20_recency": 0.63,
+   "ece": 0.089,
+   "brier": 0.2
+  },
+  {
+   "window": "2011-07-15",
+   "customers": 3534,
+   "base_rate": 0.313,
+   "auc_model": 0.81,
+   "auc_recency": 0.751,
+   "top20_model": 0.708,
+   "top20_recency": 0.571,
+   "ece": 0.023,
+   "brier": 0.155
+  },
+  {
+   "window": "2011-04-15",
+   "customers": 3221,
+   "base_rate": 0.349,
+   "auc_model": 0.779,
+   "auc_recency": 0.727,
+   "top20_model": 0.738,
+   "top20_recency": 0.592,
+   "ece": 0.018,
+   "brier": 0.174
+  }
+ ],
+ "tiers_all_customers": {
+  "model": [
+   {
+    "tier": "high",
+    "pooled": 0.752,
+    "min": 0.708,
+    "max": 0.803
+   },
+   {
+    "tier": "medium",
+    "pooled": 0.429,
+    "min": 0.379,
+    "max": 0.504
+   },
+   {
+    "tier": "low",
+    "pooled": 0.177,
+    "min": 0.116,
+    "max": 0.242
+   }
+  ],
+  "recency": [
+   {
+    "tier": "high",
+    "pooled": 0.599,
+    "min": 0.571,
+    "max": 0.63
+   },
+   {
+    "tier": "medium",
+    "pooled": 0.494,
+    "min": 0.423,
+    "max": 0.583
+   },
+   {
+    "tier": "low",
+    "pooled": 0.2,
+    "min": 0.144,
+    "max": 0.264
+   }
+  ]
+ },
+ "holdout": [
+  {
+   "window": "2011-10-14",
+   "customers": 767,
+   "base_rate": 0.433,
+   "auc_model": 0.757,
+   "auc_recency": 0.694,
+   "top20_model": 0.817,
+   "top20_recency": 0.588,
+   "ece": 0.099,
+   "top20_customers": 153,
+   "diff": 0.229,
+   "ci_low": 0.157,
+   "ci_high": 0.314,
+   "verdict": "model better (interval above 0)"
+  },
+  {
+   "window": "2011-07-15",
+   "customers": 710,
+   "base_rate": 0.282,
+   "auc_model": 0.786,
+   "auc_recency": 0.718,
+   "top20_model": 0.648,
+   "top20_recency": 0.514,
+   "ece": 0.066,
+   "top20_customers": 142,
+   "diff": 0.134,
+   "ci_low": 0.063,
+   "ci_high": 0.232,
+   "verdict": "model better (interval above 0)"
+  },
+  {
+   "window": "2011-04-15",
+   "customers": 641,
+   "base_rate": 0.357,
+   "auc_model": 0.761,
+   "auc_recency": 0.733,
+   "top20_model": 0.695,
+   "top20_recency": 0.633,
+   "ece": 0.027,
+   "top20_customers": 128,
+   "diff": 0.062,
+   "ci_low": -0.023,
+   "ci_high": 0.164,
+   "verdict": "not conclusive (interval includes 0)"
+  }
+ ],
+ "mapping": [
+  {
+   "file": "uci",
+   "rules": "correct",
+   "llm": "5 of 5 runs correct (all identical, 1 effective run)"
+  },
+  {
+   "file": "variant_a_indonesian",
+   "rules": "correct",
+   "llm": "5 of 5 runs correct (all identical, 1 effective run)"
+  },
+  {
+   "file": "variant_b_english",
+   "rules": "wrong, caught by checks",
+   "llm": "5 of 5 runs correct (all identical, 1 effective run)"
+  }
+ ],
+ "drafts": [
+  {
+   "run": "Run 1 (2026-10-05)",
+   "verifier": "v1: single banned words",
+   "customers": 50,
+   "first_try": 28,
+   "after_repair": 0,
+   "rejected": 22,
+   "good": null,
+   "note": "all 22 rejections were false alarms (\"feel free\", the verb \"offer\")"
+  },
+  {
+   "run": "Run 2 (2026-10-06)",
+   "verifier": "v2: phrases, exact day counts",
+   "customers": 50,
+   "first_try": 50,
+   "after_repair": 0,
+   "rejected": 0,
+   "good": 50,
+   "note": "drafts still contained day counts; hand-check found tone problems"
+  },
+  {
+   "run": "Run 3 (2026-10-06), due",
+   "verifier": "v3: intent by code, no durations",
+   "customers": 8,
+   "first_try": 8,
+   "after_repair": 0,
+   "rejected": 0,
+   "good": 8,
+   "note": "correct, not judged for tone; owner rating pending"
+  },
+  {
+   "run": "Run 3 (2026-10-06), overdue",
+   "verifier": "v3: intent by code, no durations",
+   "customers": 25,
+   "first_try": 25,
+   "after_repair": 0,
+   "rejected": 0,
+   "good": 24,
+   "note": "correct, not judged for tone; owner rating pending"
+  },
+  {
+   "run": "Run 3 (2026-10-06), lapsed",
+   "verifier": "v3: intent by code, no durations",
+   "customers": 17,
+   "first_try": 13,
+   "after_repair": 4,
+   "rejected": 0,
+   "good": 17,
+   "note": "correct, not judged for tone; owner rating pending"
+  }
+ ],
+ "reproduce": [
+  "Download the UCI file into data/ (see data/README.md)",
+  "python scripts/calibration.py        # cleans UCI into data/invoices.csv; calibration",
+  "python scripts/audit_uci.py          # 3-window backtest and tiers",
+  "python scripts/holdout_bootstrap.py  # holdout intervals (needs the saved predictions)",
+  "python scripts/build_evidence.py     # rebuilds this page"
+ ]
+}
