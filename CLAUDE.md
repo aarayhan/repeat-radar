@@ -14,3 +14,4 @@ Hard rules (details in MASTER_RULES):
 3. Never commit secrets, raw datasets, or real customer data.
 4. Do not reuse code from earlier projects. This repo was started after the hackathon kickoff.
 5. Feature freeze at the end of H5 (Thu Oct 8).
+6. Run tests and commit in one chained command, so a failing test blocks the commit: `python -m pytest -q && git commit ...`. Never pipe pytest into another command before `&&` (a pipe hides its exit code).

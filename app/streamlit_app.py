@@ -104,15 +104,57 @@ def analyse(key, mapping_json, _raw):
     return out
 
 
+class _Watched:
+    """Wraps an OpenAI-compatible client and records whether any call raised (provider error)."""
+    def __init__(self, client):
+        self.client, self.failed = client, False
+        self.chat = self.completions = self
+
+    def create(self, **kw):
+        try:
+            return self.client.chat.completions.create(**kw)
+        except Exception:
+            self.failed = True
+            raise
+
+
 @st.cache_data(show_spinner='Writing a draft and checking it...', max_entries=256)
-def verified_draft(key, facts_json, use_llm, _catalogue):
-    """LLM draft checked by code (app/drafts.py), template if no LLM, over budget, or if it fails twice."""
-    return llm_draft(json.loads(facts_json), llm_client() if use_llm else None, _catalogue)
+def llm_draft_cached(key, facts_json, _catalogue):
+    """LLM draft checked by code (app/drafts.py). Called only while a key is available; results made without a
+    working LLM are removed again by verified_draft()."""
+    c = llm_client()
+    w = _Watched(c[0]) if c else None
+    d = llm_draft(json.loads(facts_json), (w, c[1]) if c else None, _catalogue)
+    return {**d, 'provider_error': c is None or w.failed}
+
+
+def verified_draft(key, facts_json, request, catalogue):
+    """LLM results and template fallbacks are never mixed up: templates are cheap and not cached, and an LLM-cache
+    entry made after a provider error (or without a key) is dropped, so it is retried once the LLM works."""
+    if llm_client() is None or not llm_allowed(request):
+        return llm_draft(json.loads(facts_json), None)
+    d = llm_draft_cached(key, facts_json, catalogue)
+    if d['provider_error']:
+        llm_draft_cached.clear(key, facts_json, catalogue)
+    return d
 
 
 @st.cache_data(show_spinner=False, max_entries=256)
-def cached_explanation(key, facts_json, use_llm):
-    return llm_explanation(json.loads(facts_json), 'en', llm_client() if use_llm else None)
+def llm_explanation_cached(key, facts_json):
+    """Same rule as llm_draft_cached, for the explanation."""
+    c = llm_client()
+    w = _Watched(c[0]) if c else None
+    text, source = llm_explanation(json.loads(facts_json), 'en', (w, c[1]) if c else None)
+    return {'text': text, 'source': source, 'provider_error': c is None or w.failed}
+
+
+def explanation(key, facts_json, request):
+    if llm_client() is None or not llm_allowed(request):
+        return llm_explanation(json.loads(facts_json), 'en', None)
+    r = llm_explanation_cached(key, facts_json)
+    if r['provider_error']:
+        llm_explanation_cached.clear(key, facts_json)
+    return r['text'], r['source']
 
 
 def llm_client():
@@ -340,7 +382,7 @@ def screen_customers():
     orders = inv[inv['customer_id'] == cust]
     facts = customer_facts(orders, row['tier'], row['recency'])
     conf_key = st.session_state['confirmed'][0]
-    text, source = cached_explanation(conf_key, json.dumps(facts), llm_allowed(f'explain:{cust}'))
+    text, source = explanation(conf_key, json.dumps(facts), f'explain:{cust}')
     st.write(text)
     st.caption(f'Explanation source: {source}')
     lines = r.get('lines')
@@ -355,7 +397,7 @@ def screen_customers():
         st.info(f'Not due yet, usual gap is {gap} days.')
         return
     if lang == 'English':    # verified LLM drafts were evaluated in English only (docs/H2_REPORT.md section 9)
-        d = verified_draft(conf_key, json.dumps(dfacts), llm_allowed(f'draft:{cust}'), r.get('catalogue', ()))
+        d = verified_draft(conf_key, json.dumps(dfacts), f'draft:{cust}', r.get('catalogue', ()))
         msg, msg_source = d['text'], d['source']
     else:
         msg, msg_source = template_message(facts, 'id')

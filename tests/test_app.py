@@ -332,3 +332,49 @@ def test_no_key_message_and_trust_line_without_variable_names(monkeypatch):
     for bad in ('.env', 'FEATHERLESS', 'API_KEY', 'LLM_PROVIDER', 'LLM_MODEL'):
         assert bad not in shown, bad
     st.cache_data.clear()
+
+
+class _ExplainDraftFake(_PromptFake):
+    """Working LLM: no mapping (rules are used), a valid explanation citing a real invoice, a valid draft."""
+    def create(self, messages, **kw):
+        prompt = messages[0]['content']
+        if 'Map the columns' in prompt:
+            raise ConnectionError('mapping not faked')
+        if 'follow-up message' in prompt:
+            text = '{"message": "Hi! Let us know when you would like to order again."}'
+        else:
+            import json as _json
+            facts = _json.loads(prompt.split('Facts: ', 1)[1])
+            text = f"Their last invoice was {facts['last_orders'][0]['invoice_id']}."
+        msg = type('M', (), {'content': text})
+        return type('R', (), {'choices': [type('C', (), {'message': msg, 'finish_reason': 'stop'})]})
+
+
+class _ProviderDown(_PromptFake):
+    def create(self, messages, **kw):
+        raise ConnectionError('provider down')
+
+
+def _sources_for_first_due_customer():
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    at.button(key='confirm').click().run()
+    _go(at, '2. Customers')
+    _pick_customer(at, due=True)
+    assert not at.exception and not at.error
+    return {c.value for c in at.caption if 'source:' in c.value}
+
+
+@pytest.mark.parametrize('first', ['no key', 'provider error'])
+def test_template_explanation_and_draft_are_not_reused_once_the_llm_works(monkeypatch, first):
+    import streamlit as st
+    import app.llm as llm_mod
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    monkeypatch.setattr(llm_mod, 'client', _no_key if first == 'no key' else (lambda: (_ProviderDown(), 'fake')))
+    assert _sources_for_first_due_customer() == {'Explanation source: template', 'Message source: template'}
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_ExplainDraftFake(), 'fake'))   # key added / provider back
+    assert _sources_for_first_due_customer() == {'Explanation source: llm', 'Message source: llm'}
+    st.cache_data.clear()
+    st.cache_resource.clear()
