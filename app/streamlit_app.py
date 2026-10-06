@@ -306,8 +306,8 @@ def screen_audit():
 def main():
     st.set_page_config(page_title='Repeat Radar', layout='wide')
     st.title('Repeat Radar')
-    st.caption('Which customers to contact this week, and how often that list was right before. '
-               'ForgeHacks 2026, AI + Business.')
+    st.caption('Which customers are likely to reorder within 8 weeks, and how often that ranking was right on your '
+               'own past data. ForgeHacks 2026, AI + Business.')
     screen = st.sidebar.radio('Step', SCREENS, key='screen')
     try:
         {SCREENS[0]: screen_upload, SCREENS[1]: screen_customers, SCREENS[2]: screen_audit}[screen]()

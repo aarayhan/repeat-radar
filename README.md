@@ -20,7 +20,12 @@ On a locked holdout (20% of customers the model never saw, run once), the model'
 
 ## The problem
 
-Small B2B sellers keep sales history in exports and spreadsheets, but rarely know which customers are about to go quiet. Repeat Radar turns a raw sales export into a weekly list of customers worth contacting, and shows how often its own predictions were right.
+Small B2B sellers keep sales history in exports and spreadsheets, but rarely see which regular customers have fallen out of their usual ordering rhythm. Repeat Radar ranks customers by how likely they are to order again within 8 weeks, and shows how often that ranking was right on the seller's own past data.
+
+**What it does not claim.**
+- The tool predicts who is likely to reorder. It does not claim that contacting a customer causes a reorder; that has not been tested.
+- The message intents are simple rules, not validated: due at 0.8 to 1.5 times the customer's usual gap, overdue above 1.5 times, lapsed after 365 days.
+- The code guarantees every fact in a draft is true. It does not judge tone. Drafts are for you to edit before sending.
 
 ## What it does
 

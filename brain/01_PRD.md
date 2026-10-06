@@ -1,10 +1,10 @@
 # 01 Product requirements
 
 ## One line
-Turn a raw sales export into a weekly list of customers worth contacting, and show how often the predictions were right.
+Turn a raw sales export into a list of customers ranked by how likely they are to reorder within 8 weeks, and show how often that ranking was right. It predicts reorders; it does not claim that contacting a customer causes one.
 
 ## Problem
-Small B2B sellers keep sales history in exports and spreadsheets, but rarely know which regular customers are about to go quiet.
+Small B2B sellers keep sales history in exports and spreadsheets, but rarely see which regular customers have fallen out of their usual ordering rhythm.
 Evidence level: **Weak.** No interviews. Only a general survey (Forrester, 2020: 41% of business leaders find turning data into decisions very or extremely challenging; sample size not stated, not specific to small businesses).
 
 ## Persona (stand-in, not a validated user)
