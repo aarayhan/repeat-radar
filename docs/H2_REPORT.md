@@ -326,3 +326,99 @@ These definitions were fixed and committed before run 2:
 - **Target:** at least 40 of 50 drafts good after the one repair attempt.
 - **If below target:** the app keeps the template as the default draft, and the README says the LLM drafts are not reliable yet.
 - Run 1 is recomputed from its saved output with the same definitions. That is a recomputation, not a re-run.
+
+### Run 2 results (2026-10-06)
+**Verifier v2** (`app/drafts.py`):
+- **Blocked phrases** (case-insensitive, word boundaries): discount, % off, percent off, free shipping, free delivery, free gift, for free, free of charge, special offer, special price, limited time, in stock, back in stock, only until, expires. "feel free" and a bare "offer" are not blocked.
+- **Products:** normalized (lowercase, no punctuation, simple plural "s"). A usual product counts as mentioned if its full name or its first 3 words appear. A catalogue product that is not one of the customer's usual products is rejected.
+- **Day counts:** if present, they must be digits equal to the facts. Day counts in words ("three weeks", "a few days", "a year") and converted units ("3 weeks") are rejected.
+- **Other numbers and dates:** they must equal a fact.
+- **Prompt:** asks for the exact day count and at least one product, in English.
+- **Temperatures:** first call 0, repair 0.7.
+
+**Verifier test set** (`tests/test_drafts.py`, hand-written, no LLM). Real output:
+```
+BAD  invented product               caught=True  reasons=["product not in the facts: 'PARTY BUNTING'"]
+BAD  wrong day count                caught=True  reasons=["day count not in the facts: '40 day' (facts: 39)"]
+BAD  day count in words             caught=True  reasons=["day count in words: 'three week'"]
+BAD  converted unit                 caught=True  reasons=["converted unit, not the day count: '3 week'"]
+BAD  date not in facts              caught=True  reasons=["date not in the facts: '3 november 2011'"]
+BAD  no fact at all                 caught=True  reasons=['verified but generic (no fact)']
+BAD  discount                       caught=True  reasons=["blocked phrase: 'discount'"]
+BAD  % off, percent off             caught=True  reasons=["blocked phrase: '% off'", "blocked phrase: 'percent off'", "number not in the facts: '10'", "number not in the facts: '10'"]
+BAD  free shipping, free delivery   caught=True  reasons=["blocked phrase: 'free shipping'", "blocked phrase: 'free delivery'"]
+BAD  free gift, for free            caught=True  reasons=["blocked phrase: 'free gift'", "blocked phrase: 'for free'"]
+BAD  free of charge                 caught=True  reasons=["blocked phrase: 'free of charge'"]
+BAD  special offer, special price   caught=True  reasons=["blocked phrase: 'special offer'", "blocked phrase: 'special price'"]
+BAD  limited time                   caught=True  reasons=["blocked phrase: 'limited time'"]
+BAD  in stock, back in stock        caught=True  reasons=["blocked phrase: 'in stock'", "blocked phrase: 'back in stock'"]
+BAD  only until, expires            caught=True  reasons=["blocked phrase: 'only until'", "blocked phrase: 'expires'"]
+GOOD rejected=False  specific=True  Hi! It has been 39 days since your last order. Would you like more of 
+GOOD rejected=False  specific=True  Feel free to reorder the jumbo bags red retrospot whenever you like.
+GOOD rejected=False  specific=True  It has been 39 days since your last order on 1 November 2011. We would
+GOOD rejected=False  specific=True  We'd love to offer you the Regency Cakestand 3 Tier again; it has been
+GOOD rejected=False  specific=True  Thanks for ordering the White Hanging Heart again in November 2011!
+bad drafts caught: 15 of 15 | good drafts wrongly rejected: 0 of 5
+```
+**Run 2**, `python scripts/draft_eval_run2.py`:
+- 50 development customers from the contact list, seed 2026, none from run 1;
+- Qwen2.5-7B on Featherless.
+
+Run 1 is **recomputed** from its saved drafts with the new definitions; it was **not re-run**. Real output:
+```
+model Qwen/Qwen2.5-7B-Instruct | 50 development customers, seed 2026, none from run 1 (50 excluded) | catalogue 5198 products
+metric                             run 1 (RECOMPUTED from saved drafts)    run 2
+passed first try                                                     45       50
+passed after repair                                                   0        0
+rejected                                                              5        0
+verified                                                             45       50
+specific                                                             17       50
+generic                                                              28        0
+good (verified and specific)                                         17       50
+JSON failures (replies)                                               0        0
+seconds per draft (mean)                                            2.8      3.2
+rejection reasons                             {'day count in words': 5}       {}
+
+target: at least 40 of 50 good after repair -> run 2 has 50: MET
+logged 50 attempts for 50 customers, hashed ids unique: True
+```
+- **Target met:** 50 of 50 good after repair (target 40).
+- Run 2 had no rejections, so there are no run-2 failures to show. These are the 3 worst under the new definitions, from the run 1 recomputation (ids hashed):
+    run 1 (recomputed) | id b82c947bc48d | "Hi there! Hope you're doing well. We noticed you ordered with us a few days ago. We'd love to have you back soon with your usual products like the table lamp and hanging decorations. Take care!"
+       verifier: ["day count in words: 'few day'"]
+    run 1 (recomputed) | id 8db997f03654 | "Hi there! Hope you're doing well. We noticed you last ordered with us over a year ago. We'd love to have you back and are happy to see you enjoy our Ivory Knitted Mug Cosy, Assorted Colour Bird Ornament, and Bird House Hot Water Bottle. Drop by anytime!"
+       verifier: ["day count in words: 'a year'"]
+    run 1 (recomputed) | id a478272218ed | "Hi there! Hope you're doing well. We noticed you ordered with us a few days ago. We'd love to see you back soon—maybe even before your usual gap of 21 days! 😊"
+       verifier: ["day count in words: 'few day'"]
+
+**Notes:**
+- Every run-2 attempt is in `docs/drafts_run2.jsonl`: 50 lines, one per attempt; all passed on the first attempt. Each line has the hashed id, facts without the id, the raw draft, attempt, temperature, verdict and reject reasons.
+- **Ids are hashed:** first 12 hex characters of SHA-256 of a new random 32-byte salt (`secrets.token_hex`) plus the id. The salt and the id-to-hash key stay in `data/` (gitignored, checked with `git check-ignore`). There were no collisions among the 55 hashed ids.
+- **Search of `docs/` before committing:** no 5-digit 12xxx–18xxx pattern; none of the 5,878 real UCI customer ids appears.
+- The drafts include product names and dates from a public dataset, so a determined person could link a row back to an anonymized UCI customer id. No names, emails or addresses exist in the data.
+- **Limits:** the verifier can still miss claims it does not know about. Examples: "we miss your Lunch Bag Black Skull in our orders", or "we hope you're enjoying our BATHROOM METAL SIGN" 454 days later. These pass because they contain no number, date, unknown product or blocked phrase. A human should read drafts before sending.
+- One product in the facts is `POSTAGE`, which is a shipping line in UCI, not a product. The facts code takes product names as they are in the data.
+
+**Please hand-check these 10 random good drafts** (seed 7, ids hashed):
+```
+96ca8814e502 | days 454 | products ['BATHROOM METAL SIGN', 'COOK WITH WINE METAL SIGN', 'CREAM HEART CARD HOLDER'] | last order 2010-09-12
+   Hi there! It's been 454 days since your last order. We hope you're enjoying our BATHROOM METAL SIGN. Drop by again soon!
+b7b52654614f | days 537 | products ['CREAM SWEETHEART TRAYS', 'HOME BUILDING BLOCK WORD', 'JOY WOODEN BLOCK LETTERS'] | last order 2010-06-21
+   Hi there! It's been 537 days since your last order. We hope you're doing well. Would you consider ordering some CREAM SWEETHEART TRAYS again?
+99d166c39b43 | days 16 | products ['LUNCH BAG  BLACK SKULL.', 'PACK OF 12 HEARTS DESIGN TISSUES', 'WHITE HANGING HEART T-LIGHT HOLDER'] | last order 2011-11-24
+   Hi there! It's been 16 days since your last order. Hope you're doing well. We miss your Lunch Bag Black Skull in our orders. Drop by again soon!
+18527ace7f96 | days 34 | products ['IVORY KITCHEN SCALES', 'REGENCY CAKESTAND 3 TIER', '60 TEATIME FAIRY CAKE CASES'] | last order 2011-11-06
+   Hi there! It's been 34 days since your last order. We hope you're enjoying your Ivory Kitchen Scales. Feel free to order again anytime!
+408b78bc2957 | days 387 | products ['LARGE RED RETROSPOT WINDMILL', 'PINK TALL PORCELAIN T-LIGHT HOLDER', 'WHITE TALL PORCELAIN T-LIGHT HOLDER'] | last order 2010-11-18
+   Hi there! It's been 387 days since your last order. We hope you're enjoying our LARGE RED RETROSPOT WINDMILL. Drop us a line when you're ready to order again!
+8282b6fbd6fe | days 61 | products ['VICTORIAN GLASS HANGING T-LIGHT', 'BATH BUILDING BLOCK WORD', 'COLOUR GLASS T-LIGHT HOLDER HANGING'] | last order 2011-10-10
+   Hi there! It's been 61 days since your last order. We hope you're enjoying our VICTORIAN GLASS HANGING T-LIGHT. Drop by again soon!
+3170beec1a24 | days 248 | products ['200 RED + WHITE BENDY STRAWS', 'CHICK GREY HOT WATER BOTTLE', 'FELT EGG COSY BLUE RABBIT'] | last order 2011-04-06
+   Hi there! It's been 248 days since your last order. We hope you're doing well. We miss working with you and would love to see you place another order, perhaps some more 200 RED + WHITE BENDY STRAWS?
+5e9471ef3ab9 | days 20 | products ['ASSORTED COLOUR BIRD ORNAMENT', 'ASSORTED COLOUR MINI CASES', 'CARD HOLDER GINGHAM HEART'] | last order 2011-11-20
+   Hi there! It's been 20 days since your last order. We hope you're enjoying our ASSORTED COLOUR BIRD ORNAMENT. Drop by again soon!
+88bae6dafc08 | days 8 | products ['POSTAGE', 'BUBBLEGUM RING ASSORTED', 'PACK OF 20 NAPKINS RED APPLES'] | last order 2011-12-02
+   Hi there! It's been 8 days since your last order. Hope you're doing well. We miss working with you and look forward to seeing POSTAGE and BUBBLEGUM RING ASSORTED in your order again soon!
+287023f547df | days 17 | products ['ABC TREASURE BOOK BOX', 'ASSORTED COLOUR BIRD ORNAMENT', 'BINGO SET'] | last order 2011-11-23
+   Hi there! It's been 17 days since your last order. Hope you're doing well. We'd love to see you again soon, maybe try some more ABC TREASURE BOOK BOX?
+```
