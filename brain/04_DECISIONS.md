@@ -39,6 +39,13 @@ Format: date, decision, reason, evidence level.
     - The marker `data/holdout_used.txt` was not touched.
     - The per-customer rows are used only for the bootstrap intervals (`docs/H2_REPORT.md` section 7), and for nothing else.
 
+## 2026-10-06
+14. **Message intent thresholds are simple rules, not validated.**
+    - not_due below 0.8 × the customer's usual gap; due from 0.8 to 1.5 ×; overdue above 1.5 ×; lapsed after 365 days.
+    - No experiment supports these exact numbers. Evidence: Inference.
+15. **Prediction, not causation.** The tool predicts who is likely to reorder within 8 weeks. It does not claim that contacting a customer causes a reorder; no experiment has tested that. Evidence: Unknown.
+16. **Draft verifier frozen for deploy.** No new rules after this date. The code guarantees every fact in a draft is true. It does not judge tone; drafts are for the owner to edit before sending.
+
 ## Open questions
 - Is the model calibrated? Answered in H2: on average yes, not in the most recent window (`03_EVIDENCE.md` D, H).
 - Does Featherless support reliable structured JSON on the chosen model? Partly answered 2026-10-05: 5 of 5 smoke runs returned valid JSON, but 2 of 5 mapped the invoice id to the wrong column (`docs/H2_REPORT.md`).
