@@ -1,9 +1,15 @@
 """Verified follow-up drafts.
 
 Code builds a facts object per customer. The LLM only words a short message from it and never computes anything.
-Code then checks every number, date and product name in the draft against the facts, and rejects any promise or
-claim the facts do not support (BANNED below). One repair attempt with the verifier's errors, then a plain template.
-Reuses the pattern of app/explain.py (LLM wording, code check, template fallback, source label).
+Code then checks the draft against the facts:
+- blocked phrases (BLOCKED_PHRASES, case-insensitive, word boundaries);
+- products: a catalogue product that is not one of the customer's usual products is rejected;
+- day counts: if present, written as digits and equal to the exact integer in the facts; worded day counts
+  ("three weeks", "a month") and converted units ("3 weeks") are rejected;
+- every other number and date must equal a fact.
+A verified draft is "specific" if it mentions a usual product (normalized: lowercase, no punctuation, simple
+plural; full name or its first 3 words) or the exact day count; otherwise "generic".
+One repair attempt (temperature 0.7) with the verifier's errors, then a plain template. Same pattern as app/explain.py.
 """
 import json
 import re
@@ -11,20 +17,17 @@ import time
 
 import pandas as pd
 
-# Promise or claim words the facts can never support. Fixed before the evaluation; matched case-insensitively,
-# as whole words (symbols as plain substrings).
-BANNED = ['discount', 'off', 'sale', 'free', 'complimentary', 'gift', 'voucher', 'coupon', 'promo', 'promotion',
-          'offer', 'deal', 'deals', 'price', 'prices', 'priced', 'pricing', 'cheap', 'cheaper', 'cost', 'save',
-          'saving', 'savings', '£', '$', '€', 'stock', 'restock', 'restocked', 'available', 'availability', 'limited',
-          'deadline', 'expire', 'expires', 'expiry', 'last chance', 'hurry', 'until', 'ends', 'guarantee',
-          'guaranteed', 'delivery', 'deliver', 'shipping', 'ship', 'new arrival', 'new arrivals', 'exclusive',
-          'tomorrow', 'next week', 'this week', 'weekend', 'monday', 'tuesday', 'wednesday', 'thursday', 'friday',
-          'saturday', 'sunday']
+BLOCKED_PHRASES = ['discount', '% off', 'percent off', 'free shipping', 'free delivery', 'free gift', 'for free',
+                   'free of charge', 'special offer', 'special price', 'limited time', 'in stock', 'back in stock',
+                   'only until', 'expires']
 MONTHS = ['january', 'february', 'march', 'april', 'may', 'june', 'july', 'august', 'september', 'october',
           'november', 'december']
-NUMBER_WORDS = {w: i for i, w in enumerate(['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten',
-                                            'eleven', 'twelve'], start=2)} | {'dozen': 12, 'hundred': 100}
-MIN_PRODUCT_LEN = 8  # shorter catalogue names are too generic to detect as product mentions
+NUMBER_WORDS = ['two', 'three', 'four', 'five', 'six', 'seven', 'eight', 'nine', 'ten', 'eleven', 'twelve',
+                'dozen', 'hundred']
+WORDED_SPAN = (r'\b(a|an|one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|couple of|few|several)'
+               r'\s+(day|week|month|year)\b')
+MIN_PRODUCT_LEN = 8          # shorter catalogue names are too generic to detect as product mentions
+TEMP_FIRST, TEMP_REPAIR = 0, 0.7
 
 
 def usual_products(lines, k=3):
@@ -58,72 +61,102 @@ def template_draft(facts):
 
 # ---------- verifier ----------
 
-def _remove(pattern, text, check, problems, what):
-    def sub(m):
-        if not check(m):
-            problems.append(f'{what} not in the facts: {m.group(0).strip()!r}')
-        return ' '
-    return re.sub(pattern, sub, text, flags=re.IGNORECASE)
+def normalize(s):
+    """Lowercase, punctuation to spaces, simple plural 's' removed (not from 'ss' or words of 3 letters or less)."""
+    words = re.sub(r'[^a-z0-9%]+', ' ', str(s).lower()).split()
+    return ' '.join(w[:-1] if len(w) > 3 and w.endswith('s') and not w.endswith('ss') else w for w in words)
+
+
+def _has(phrase, text):
+    return re.search(r'(?<![a-z0-9])' + re.escape(phrase) + r'(?![a-z0-9])', text) is not None
+
+
+def _mentions(product, norm_text):
+    p = normalize(product).split()
+    return bool(p) and (_has(' '.join(p), norm_text) or (len(p) >= 3 and _has(' '.join(p[:3]), norm_text)))
+
+
+def _remove_dates(text, last, problems):
+    """Find dates in lowercase text; each must be the last order date. Returns the text without them."""
+    month = r'(' + '|'.join(MONTHS) + r')'
+    same = lambda d, mo, y: (int(d) == last.day and MONTHS.index(mo) + 1 == last.month  # noqa: E731
+                             and (y is None or int(y) == last.year))
+    checks = [
+        (r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b',
+         lambda m: (int(m[1]), int(m[2]), int(m[3])) == (last.year, last.month, last.day)),
+        (r'\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b',
+         lambda m: int(m[3]) == last.year and {int(m[1]), int(m[2])} == {last.day, last.month}),
+        (r'\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?' + month + r'\b(?:,?\s+(\d{4}))?', lambda m: same(m[1], m[2], m[3])),
+        (r'\b' + month + r'\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?', lambda m: same(m[2], m[1], m[3])),
+        (r'\bmay\s+(\d{4})\b', lambda m: last.month == 5 and int(m[1]) == last.year),
+        (r'\b(' + '|'.join(m for m in MONTHS if m != 'may') + r')\b(?:\s+(\d{4}))?',   # "may" is also a verb
+         lambda m: MONTHS.index(m[1]) + 1 == last.month and (m[2] is None or int(m[2]) == last.year)),
+    ]
+    for pattern, ok in checks:
+        def sub(m, ok=ok):
+            if not ok(m):
+                problems.append(f'date not in the facts: {m.group(0).strip()!r}')
+            return ' '
+        text = re.sub(pattern, sub, text)
+    return text
 
 
 def verify(text, facts, catalogue=()):
-    """Problems with the draft (empty list = passes). catalogue: all product names known in the data."""
-    problems = []
-    low = ' ' + (text or '').lower() + ' '
-    if not low.strip():
+    """Problems with the draft (empty list = verified). catalogue: all product names known in the data."""
+    if not (text or '').strip():
         return ['empty draft']
-    for w in BANNED:
-        hit = w in low if not w[0].isalnum() else re.search(r'(?<![a-z])' + re.escape(w) + r'(?![a-z])', low)
-        if hit:
-            problems.append(f'promise or claim outside the facts: {w!r}')
+    low = text.lower()
+    problems = [f'blocked phrase: {p!r}' for p in BLOCKED_PHRASES
+                if (re.search(r'%\s*off\b', low) if p == '% off' else _has(p, low))]
+    allowed = [normalize(p) for p in facts['usual_products']]
+    norm_all = normalize(text)
+    for name in catalogue:                                   # invented products
+        n = normalize(name)
+        if len(n) >= MIN_PRODUCT_LEN and _has(n, norm_all) and not any(n in a for a in allowed):
+            problems.append(f'product not in the facts: {str(name).strip()!r}')
 
-    allowed = [p.lower() for p in facts['usual_products']]
-    for name in catalogue:                      # invented products
-        n = str(name).strip().lower()
-        if len(n) >= MIN_PRODUCT_LEN and n in low and not any(n in a for a in allowed):
-            problems.append(f'product not in the facts: {name.strip()!r}')
-    for a in sorted(allowed, key=len, reverse=True):
-        low = low.replace(a, ' ')               # product names may contain digits ("SET OF 3 ...")
+    rest = normalize(_remove_dates(low, pd.Timestamp(facts['last_order']), problems))
+    for a in sorted(allowed, key=len, reverse=True):         # product names may contain digits ("set 7 babushka")
+        words = a.split()
+        for p in [a] + ([' '.join(words[:3])] if len(words) >= 3 else []):
+            rest = re.sub(r'(?<![a-z0-9])' + re.escape(p) + r'(?![a-z0-9])', ' ', rest)
 
-    last = pd.Timestamp(facts['last_order'])
-    month = r'(' + '|'.join(MONTHS) + r')'
-    bare_month = r'\b(' + '|'.join(m for m in MONTHS if m != 'may') + r')\b'   # "may" is also a verb
-    same_day = lambda d, mo, y: (int(d) == last.day and MONTHS.index(mo.lower()) + 1 == last.month  # noqa: E731
-                                 and (y is None or int(y) == last.year))
-    low = _remove(r'\b(\d{4})-(\d{1,2})-(\d{1,2})\b', low,
-                  lambda m: (int(m[1]), int(m[2]), int(m[3])) == (last.year, last.month, last.day), problems, 'date')
-    low = _remove(r'\b(\d{1,2})[/.-](\d{1,2})[/.-](\d{4})\b', low,
-                  lambda m: int(m[3]) == last.year and {int(m[1]), int(m[2])} == {last.day, last.month},
-                  problems, 'date')
-    low = _remove(r'\b(\d{1,2})(?:st|nd|rd|th)?\s+(?:of\s+)?' + month + r'\b(?:,?\s+(\d{4}))?', low,
-                  lambda m: same_day(m[1], m[2], m[3]), problems, 'date')
-    low = _remove(r'\b' + month + r'\s+(\d{1,2})(?:st|nd|rd|th)?\b(?:,?\s+(\d{4}))?', low,
-                  lambda m: same_day(m[2], m[1], m[3]), problems, 'date')
-    low = _remove(r'\bmay\s+(\d{4})\b', low, lambda m: last.month == 5 and int(m[1]) == last.year, problems, 'date')
-    low = _remove(bare_month + r'(?:\s+(\d{4}))?', low,
-                  lambda m: MONTHS.index(m[1].lower()) + 1 == last.month and (m[2] is None or int(m[2]) == last.year),
-                  problems, 'date')
-
-    numbers = {facts['days_since_last_order'], facts['tier_hit_rate_pct'], last.year}
-    numbers |= {facts['typical_gap_days']} if facts['typical_gap_days'] is not None else set()
-    allowed_tokens = {str(n) for n in numbers} | {facts['customer_id']}
-    for tok in re.findall(r'\d+(?:[.,]\d+)*', low):
-        if tok not in allowed_tokens:
+    days, gap = facts['days_since_last_order'], facts['typical_gap_days']
+    for m in re.finditer(WORDED_SPAN, rest):
+        problems.append(f'day count in words: {m.group(0)!r}')
+    rest = re.sub(WORDED_SPAN, ' ', rest)
+    for m in re.finditer(r'\b(\d+)\s+(week|month|year)\b', rest):
+        problems.append(f'converted unit, not the day count: {m.group(0)!r}')
+    for m in re.finditer(r'\b(\d+)\s+day\b', rest):
+        if int(m[1]) not in {days, gap}:
+            problems.append(f'day count not in the facts: {m.group(0)!r} (facts: {days})')
+    rest = re.sub(r'\b\d+\s+(day|week|month|year)\b', ' ', rest)
+    for w in NUMBER_WORDS:
+        if _has(w, rest):
+            problems.append(f'number in words: {w!r}')
+    allowed_numbers = {str(days), str(facts['tier_hit_rate_pct']), str(pd.Timestamp(facts['last_order']).year),
+                       facts['customer_id']} | ({str(gap)} if gap is not None else set())
+    for tok in re.findall(r'\d+', rest):
+        if tok not in allowed_numbers:
             problems.append(f'number not in the facts: {tok!r}')
-    for word, value in NUMBER_WORDS.items():
-        if re.search(r'\b' + word + r'\b', low) and value not in numbers:
-            problems.append(f'number not in the facts: {word!r}')
     return problems
+
+
+def is_specific(text, facts):
+    """Mentions a usual product (normalized, full name or first 3 words) or the exact day count as digits."""
+    n = normalize(text)
+    return any(_mentions(p, n) for p in facts['usual_products']) or _has(str(facts['days_since_last_order']), n)
 
 
 # ---------- LLM draft with one repair ----------
 
 def _prompt(facts):
     return ('Write a short, friendly follow-up message (2 or 3 sentences, English) from a small wholesaler to this '
-            'customer, inviting them to order again. Use ONLY these facts. Do not calculate anything. Do not add any '
-            'number, date or product that is not in the facts. Do not mention prices, discounts, offers, free items, '
-            'stock, delivery or deadlines. Do not mention the tier or the hit rate; they are internal.\n'
-            'Return ONLY a JSON object: {"message": "<the message>"}\n'
+            'customer, inviting them to order again. Use ONLY these facts and do not calculate anything. '
+            f"Include the exact day count ({facts['days_since_last_order']} days, written as digits) and at least "
+            'one product name exactly as written in the facts. Do not add any other number, date or product. '
+            'Do not mention prices, discounts, offers, free items, stock or deadlines. Do not mention the tier or '
+            'the hit rate; they are internal.\nReturn ONLY a JSON object: {"message": "<the message>"}\n'
             f'Facts: {json.dumps(facts)}')
 
 
@@ -138,30 +171,34 @@ def _parse(text):
 
 
 def llm_draft(facts, client=None, catalogue=()):
-    """Returns a dict: text, source ('llm', 'llm_repaired' or 'template'), attempts [(raw, problems)],
-    json_failures, seconds. client: (OpenAI-compatible client, model) or None."""
+    """Returns a dict: text, source ('llm', 'llm_repaired' or 'template'), specific (bool),
+    attempts [(raw, problems, temperature)], json_failures, seconds. client: (OpenAI-compatible client, model) or None."""
     t0, attempts, json_failures = time.time(), [], 0
     if client is not None:
         llm, model = client
         messages = [{'role': 'user', 'content': _prompt(facts)}]
-        for attempt in range(2):
+        for attempt, temperature in enumerate((TEMP_FIRST, TEMP_REPAIR)):
             try:
-                r = llm.chat.completions.create(model=model, messages=messages, temperature=0, max_tokens=250)
+                r = llm.chat.completions.create(model=model, messages=messages, temperature=temperature,
+                                                max_tokens=250)
                 raw = r.choices[0].message.content
             except Exception as e:  # network, auth, rate limit: fall back, never break the screen
-                attempts.append((None, [f'API error: {type(e).__name__}']))
+                attempts.append((None, [f'API error: {type(e).__name__}'], temperature))
                 break
             try:
-                problems = verify(_parse(raw), facts, catalogue)
+                message = _parse(raw)
+                problems = verify(message, facts, catalogue)
             except ValueError as e:
                 json_failures += 1
-                problems = [str(e)]
-            attempts.append((raw, problems))
+                message, problems = None, [str(e)]
+            attempts.append((raw, problems, temperature))
             if not problems:
-                return {'text': _parse(raw), 'source': 'llm' if attempt == 0 else 'llm_repaired',
-                        'attempts': attempts, 'json_failures': json_failures, 'seconds': time.time() - t0}
+                return {'text': message, 'source': 'llm' if attempt == 0 else 'llm_repaired',
+                        'specific': is_specific(message, facts), 'attempts': attempts,
+                        'json_failures': json_failures, 'seconds': time.time() - t0}
             messages += [{'role': 'assistant', 'content': raw or ''},
                          {'role': 'user', 'content': 'Your draft failed these checks: ' + '; '.join(problems)
                           + '. Rewrite it using only the facts. Return ONLY the JSON object {"message": "..."}.'}]
-    return {'text': template_draft(facts), 'source': 'template', 'attempts': attempts,
+    text = template_draft(facts)
+    return {'text': text, 'source': 'template', 'specific': is_specific(text, facts), 'attempts': attempts,
             'json_failures': json_failures, 'seconds': time.time() - t0}
