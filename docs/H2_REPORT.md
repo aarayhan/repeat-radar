@@ -597,3 +597,40 @@ ba145ff78fbd | lapsed | source llm | products ['Wood 2 drawer cabinet white fini
 ba6c31a00564 | lapsed | source llm | products ['12 pencils small tube posy', '36 pencils tube posy', '75 black fairy cake cases']
    Hello again, we hope you're well. Just checking in to see if you're still using our 12 pencils small tube posy in your projects.
 ```
+
+## 12. Pre-push checks (2026-10-06, local main)
+**Secret scan, full history.** gitleaks 8.30.1 (official release, checksum verified, run from a temporary folder), over all branches with `--log-opts=--all`:
+```
+51 commits scanned.
+scanned ~1084340 bytes (1.08 MB) in 1.71s
+no leaks found
+```
+A grep of every added or removed line in the history for "FEATHERLESS", "sk-" and "api_key" found 57 unique lines: FEATHERLESS 49, sk- 0, api_key 22.
+- All of them are environment variable names, code, documentation or the placeholder `"paste-your-key-here"` in `docs/DEPLOY.md`.
+- No key value was found. The history was not rewritten.
+
+**Requirements vs the holdout venv.** The 8 pins in `requirements.txt` equal the versions in `.venv` (`uv pip freeze`): no difference. 52 transitive packages are not pinned (for example scipy 1.18.1, joblib 1.6.0, threadpoolctl 3.7.0), so a fresh install could get other versions of those.
+
+**Demo samples on the audit screen today** (rule mapping, no LLM):
+
+| Sample | Windows | Refusals | Method | Top-20% hit, model vs recency |
+|---|---|---|---|---|
+| ecommerce.csv | 3 | 63 customers with 1 order | model | 0.860/0.767, 0.917/0.861, 0.903/0.774 |
+| kasir_indonesia.csv | 3 | 72 customers with 1 order; rule 3 triggered by ties in 2 windows | recency rule | 0.902/0.805, 0.857/0.857, 0.967/0.967 |
+
+- Pooled tier hit rates for the method used:
+  - e-commerce (model): high 0.891, medium 0.696, low 0.318;
+  - kasir (recency rule): high 0.868, medium 0.790, low 0.317.
+- **How the samples were generated** (`scripts/make_sample_data.py`, seed 42):
+  - 300 customers each; the first order falls on a random day in the first ~23 months;
+  - 15% buy once;
+  - the rest buy at their own rate (lognormal, about monthly) with memoryless gaps; half of them stop at a random point;
+  - 1-3 products per order, quantity 1-12;
+  - no seasonality, trend, returns or missing ids.
+- Base rates (45-67%) and hit rates (86-97%) are therefore much higher than on UCI (31-43%, 71-80%).
+
+**Added in this step:**
+- an Evidence (UCI) page, from `app/evidence_uci.json` built by `scripts/build_evidence.py` (aggregates only, CC BY 4.0 attribution, reproduction commands);
+- the synthetic-sample label on screens 1-3;
+- the contact list grouped by intent (Due now, Slipping, Lapsed, Not due yet; by tier, then rank, with counts);
+- an app-wide daily LLM cap (`LLM_DAILY_CAP`, default 500, in memory) on top of the per-session cap.
