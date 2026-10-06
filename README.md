@@ -4,15 +4,29 @@
 
 **Status:** work in progress. This README is rewritten before submission.
 
+## We do not just make predictions. We only make them when the data shows we can trust them.
+
+On a locked holdout (20% of customers the model never saw, run once), the model's top 20% held more customers who ordered again within 8 weeks than the simple "most recent buyers first" rule, in all three test windows:
+
+| Window | Model | Recency rule | Difference, 95% interval (bootstrap) |
+|---|---|---|---|
+| Oct 2011 | 82% | 59% | +23 points (+16 to +31) |
+| Jul 2011 | 65% | 51% | +13 points (+6 to +23) |
+| Apr 2011 | 70% | 63% | +6 points (**-2 to +16, not conclusive**) |
+
+- The April win is small, and its interval includes zero, so in that window we cannot say the model is better.
+- One public dataset, B2B gift-ware, 2009-2011. The October window was already seen while designing the method.
+- Details: `docs/H2_REPORT.md` sections 5 and 7.
+
 ## The problem
 
 Small B2B sellers keep sales history in exports and spreadsheets, but rarely know which customers are about to go quiet. Repeat Radar turns a raw sales export into a weekly list of customers worth contacting, and shows how often its own predictions were right.
 
 ## What it does
 
-1. **Upload** a messy sales export (any column names). AI maps the columns to a standard schema and asks you to confirm.
-2. **Contact list**: customers ranked by the chance they reorder within 8 weeks, each with a reason that cites their own orders.
-3. **Audit**: the model is tested on your own history against a random guess and a simple rule. Customers with too little history are not scored, and the app says why.
+1. **Upload** a messy sales export (any column names). An LLM and built-in rules both propose a column mapping; code checks it (values, and one customer and one date per invoice). If they disagree, the app shows both and you pick. You always confirm.
+2. **Contact list**: customers ranked and grouped into high, medium and low tiers. Each tier shows how often it was right in past test windows on your own data, not a probability. Each customer gets a short reason from their own orders and a draft follow-up message checked by code.
+3. **Audit**: the model is tested on your own history against the base rate and a simple recency rule. Customers with too little history are not scored, and the app says why.
 
 If the model does not beat the simple rule on your data, the app says so.
 
@@ -20,9 +34,9 @@ If the model does not beat the simple rule on your data, the app says so.
 
 | Task | Done by |
 |---|---|
-| Map messy columns to a schema | LLM |
-| Explain a prediction using the customer's orders | LLM |
-| Draft a follow-up message | LLM |
+| Map messy columns to a schema | LLM proposal plus built-in rules; code checks both, you confirm |
+| Explain a prediction using the customer's orders | LLM if configured, else a template; invoice numbers checked by code |
+| Draft a follow-up message | LLM (English) from code-built facts; code checks every number, date, product and blocked promise; template if it fails |
 | Features, model, backtest, all numbers | Code (pandas, scikit-learn) |
 
 ## Built during the hackathon
@@ -53,14 +67,18 @@ Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (U
 
 **Does not work, or is weaker than it sounds**
 - The contact list does not show "the chance a customer reorders". Probabilities were off by about 9 points in the most recent test window (calibration error 0.089; 0.099 on the holdout), so only tier hit rates are shown.
-- The LLM column mapping returns valid JSON (5 of 5 runs), but put the invoice id in the wrong column in 2 of 5 runs. The user must check the mapping on screen 1.
-- LLM follow-up drafts:
+- The LLM column mapping returns valid JSON (5 of 5 runs), but put the invoice id in the wrong column in 2 of 5 runs (with 3 synthetic sample rows). The user must check the mapping on screen 1.
+- Since 2026-10-06, code checks that every invoice belongs to one customer and one day, which catches that error. On UCI and two UCI-derived variants the LLM was right on all required fields; the built-in rules missed one field on one variant, and the app caught it. If the LLM and the rules disagree, the app shows both and you pick.
+- LLM follow-up drafts, run 1 (2026-10-05):
   - 28 of 50 passed our verifier on the first try;
   - the 22 rejections were all false alarms of our banned-word list ("feel free", "offer");
   - the repair attempt changed nothing;
   - most passing drafts were generic.
+- LLM follow-up drafts, run 2 (2026-10-06):
+  - with a fixed verifier (phrase list, exact day counts) and a prompt that asks for the day count and a product, 50 of 50 new customers got a verified, specific draft on the first try;
+  - the verifier caught 15 of 15 hand-written bad drafts.
 
-  The app still shows a fixed template draft, not the LLM draft.
+  The app now shows the LLM draft in English (labeled, with a template fallback); Indonesian drafts are still templates. The verifier cannot catch claims it has no rule for, so drafts must be read before sending. 10 drafts are waiting for a human check.
 - The LLM explanation on screen 2 has not been checked against a real model; without a key it uses a template.
 - In the middle tier, the simple recency rule finds more returning customers than the model (49% vs 43% on all customers). The model's advantage is in the top tier.
 - One dataset, B2B gift-ware, 2009-2011. The data ends in 2011, so there is no test on later time periods. The October 2011 window was seen while designing the method.

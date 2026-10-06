@@ -422,3 +422,23 @@ b7b52654614f | days 537 | products ['CREAM SWEETHEART TRAYS', 'HOME BUILDING BLO
 287023f547df | days 17 | products ['ABC TREASURE BOOK BOX', 'ASSORTED COLOUR BIRD ORNAMENT', 'BINGO SET'] | last order 2011-11-23
    Hi there! It's been 17 days since your last order. Hope you're doing well. We'd love to see you again soon, maybe try some more ABC TREASURE BOOK BOX?
 ```
+
+## 10. App and README (2026-10-06)
+- **Verified drafts in the UI.** The target was met (section 9), so screen 2 now shows the LLM draft in English:
+  - it is labeled `llm` or `llm_repaired`, with a note that it was checked by code and should be read before sending;
+  - it falls back to the template if there is no LLM or if it fails twice;
+  - Indonesian drafts stay templates, because the LLM drafts were evaluated in English only;
+  - an AppTest checks the label with a stand-in LLM.
+- **Probability percentages: nothing had to change.** A search of `app/` for prob, predict_proba, `r['p']`, chance, % and pct found no model probability on any screen, in the explanation text or in the draft facts. Every percentage shown is a measured hit rate or base rate:
+  - screen 2 tier metrics;
+  - the screen 3 tables and tier sentence;
+  - the rule 3 reason;
+  - `tier_hit_rate_pct` in the draft facts.
+
+  The model probability is used only for ranking. The app has no export.
+- **README:** the new headline sits above the holdout table, which includes the April interval (-2 to +16 points, not conclusive). These lines were corrected:
+  - "ranked by the chance they reorder" now describes tiers with measured hit rates;
+  - the AI/code table now shows the rules plus checks for mapping, the template fallback, and code-checked drafts;
+  - "The app still shows a fixed template draft" was replaced by the run 2 result. The run 1 numbers were kept.
+- `scripts/pivot_gate.py` was moved outside the repo (`../pivot_gate_backup/`) and not committed.
+- Full test suite: 92 passed.
