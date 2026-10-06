@@ -5,6 +5,7 @@ Files are processed in memory only (never written to disk, never logged). All nu
 import hashlib
 import io
 import json
+import os
 import sys
 from pathlib import Path
 
@@ -24,6 +25,9 @@ SAMPLES = {'Indonesian point of sale (synthetic)': 'kasir_indonesia.csv',
            'E-commerce (synthetic)': 'ecommerce.csv'}
 SCREENS = ['1. Upload', '2. Customers', '3. Audit']
 NONE = '(none)'
+DEFAULT_LLM_CAP = 20   # LLM requests per session (override with LLM_SESSION_CAP)
+SECRET_KEYS = ('FEATHERLESS_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'LLM_PROVIDER', 'LLM_MODEL',
+               'LLM_SESSION_CAP')
 INTENT_LABEL = {'not_due': 'Not due yet', 'due': 'Due: restock reminder', 'overdue': 'Overdue: check in',
                 'lapsed': 'Lapsed: re-introduce'}
 pct = '{:.0%}'.format
@@ -44,8 +48,8 @@ def read_table(key, name, _data):
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
-def proposal(key, _raw):
-    return propose_mapping(_raw)
+def proposal(key, use_llm, _raw):
+    return propose_mapping(_raw, use_llm=use_llm)
 
 
 @st.cache_data(show_spinner='Cleaning, backtesting and scoring...', max_entries=8)
@@ -71,9 +75,14 @@ def analyse(key, mapping_json, _raw):
 
 
 @st.cache_data(show_spinner='Writing a draft and checking it...', max_entries=256)
-def verified_draft(key, facts_json, _catalogue):
-    """LLM draft checked by code (app/drafts.py), template if no LLM or if it fails twice."""
-    return llm_draft(json.loads(facts_json), llm_client(), _catalogue)
+def verified_draft(key, facts_json, use_llm, _catalogue):
+    """LLM draft checked by code (app/drafts.py), template if no LLM, over budget, or if it fails twice."""
+    return llm_draft(json.loads(facts_json), llm_client() if use_llm else None, _catalogue)
+
+
+@st.cache_data(show_spinner=False, max_entries=256)
+def cached_explanation(key, facts_json, use_llm):
+    return llm_explanation(json.loads(facts_json), 'en', llm_client() if use_llm else None)
 
 
 def llm_client():
@@ -81,6 +90,36 @@ def llm_client():
         return client()
     except LLMUnavailable:
         return None
+
+
+def secrets_to_env():
+    """On Streamlit Community Cloud, keys come from st.secrets; locally, app/llm.py reads .env. Never in code."""
+    try:
+        for k in SECRET_KEYS:
+            if k in st.secrets and not os.getenv(k):
+                os.environ[k] = str(st.secrets[k])
+    except Exception:   # no secrets.toml (local run): .env is used instead
+        pass
+
+
+def llm_allowed(request):
+    """Session budget for LLM requests, to protect the API key on a public deploy. Each distinct request (a file's
+    mapping, a customer's explanation, a customer's draft) counts once; cached repeats do not count again."""
+    cap = int(os.getenv('LLM_SESSION_CAP', DEFAULT_LLM_CAP))
+    used = st.session_state.setdefault('llm_requests', set())
+    if request in used:
+        return True
+    if len(used) >= cap:
+        st.session_state['llm_cap_hit'] = cap
+        return False
+    used.add(request)
+    return True
+
+
+def cap_notice():
+    if st.session_state.get('llm_cap_hit'):
+        st.warning(f"LLM limit for this session reached ({st.session_state['llm_cap_hit']} requests). "
+                   'The app now uses built-in rules and templates; everything else works as before.')
 
 
 # ---------- screen 1: upload and mapping ----------
@@ -122,7 +161,8 @@ def screen_upload():
         st.warning(f'{dropped_sheets} sheet(s) with different columns were ignored; only sheets shaped like the first are used.')
 
     columns = list(raw.columns)
-    p = proposal(key, raw)
+    p = proposal(key, llm_allowed(f'map:{key}'), raw)
+    cap_notice()
     src = {'llm': 'the LLM', 'rules': 'the built-in rules', None: 'nobody (please map by hand)'}[p['source']]
     st.subheader('Column mapping')
     st.write(f'Proposed by {src}.')
@@ -236,7 +276,8 @@ def screen_customers():
     row = s[s['customer_id'] == cust].iloc[0]
     orders = inv[inv['customer_id'] == cust]
     facts = customer_facts(orders, row['tier'], row['recency'])
-    text, source = llm_explanation(facts, 'en', llm_client())
+    conf_key = st.session_state['confirmed'][0]
+    text, source = cached_explanation(conf_key, json.dumps(facts), llm_allowed(f'explain:{cust}'))
     st.write(text)
     st.caption(f'Explanation source: {source}')
     lines = r.get('lines')
@@ -251,12 +292,13 @@ def screen_customers():
         st.info(f'Not due yet, usual gap is {gap} days.')
         return
     if lang == 'English':    # verified LLM drafts were evaluated in English only (docs/H2_REPORT.md section 9)
-        d = verified_draft(st.session_state['confirmed'][0], json.dumps(dfacts), r.get('catalogue', ()))
+        d = verified_draft(conf_key, json.dumps(dfacts), llm_allowed(f'draft:{cust}'), r.get('catalogue', ()))
         msg, msg_source = d['text'], d['source']
     else:
         msg, msg_source = template_message(facts, 'id')
     st.text_area('Draft message', msg, key=f'msg_{cust}_{lang}')
     st.caption(f'Message source: {msg_source}')
+    cap_notice()
     if msg_source != 'template':
         st.caption('Checked by code: products and dates match this customer\'s facts, no duration is written, and no '
                    'blocked promise (discount, free shipping, stock, deadline, drop by...) appears. The check cannot '
@@ -305,6 +347,7 @@ def screen_audit():
 
 def main():
     st.set_page_config(page_title='Repeat Radar', layout='wide')
+    secrets_to_env()
     st.title('Repeat Radar')
     st.caption('Which customers are likely to reorder within 8 weeks, and how often that ranking was right on your '
                'own past data. ForgeHacks 2026, AI + Business.')

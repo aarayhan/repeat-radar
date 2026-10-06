@@ -106,7 +106,7 @@ def _checked(mapping, columns, df):
     return check_values(df, mapping)
 
 
-def propose_mapping(df, llm=None, model=None, n_sample_rows=3):
+def propose_mapping(df, llm=None, model=None, n_sample_rows=3, use_llm=True):
     """Both proposals: LLM (if configured) and rules. Default: the LLM's if it passes every check, else the rules'
     if they pass, else source None (user must map by hand). Only n_sample_rows rows are sent to the LLM provider.
     needs_choice: the LLM and rules disagree on a required field, or one of them leaves it empty; the app then shows
@@ -116,13 +116,17 @@ def propose_mapping(df, llm=None, model=None, n_sample_rows=3):
     rules = rule_mapping(columns)
     rules_problems = _checked(rules, columns, df)
     llm_map, llm_problems, llm_error = None, [], None
-    try:
-        llm_map, _ = map_columns(columns, df.head(n_sample_rows).astype(str).values.tolist(), llm=llm, model=model)
-        llm_problems = check_values(df, llm_map)
-        if llm_problems:
-            llm_error = 'LLM mapping failed the value checks: ' + '; '.join(llm_problems)
-    except RuntimeError as e:  # LLMUnavailable, or failed twice
-        llm_error = str(e)
+    if not use_llm:          # e.g. the app's per-session LLM budget is used up
+        llm_error = 'LLM limit for this session reached; built-in rules only'
+    else:
+        try:
+            llm_map, _ = map_columns(columns, df.head(n_sample_rows).astype(str).values.tolist(), llm=llm,
+                                     model=model)
+            llm_problems = check_values(df, llm_map)
+            if llm_problems:
+                llm_error = 'LLM mapping failed the value checks: ' + '; '.join(llm_problems)
+        except RuntimeError as e:  # LLMUnavailable, or failed twice
+            llm_error = str(e)
     needs_choice = llm_map is not None and any(
         llm_map.get(f) is None or rules.get(f) is None or llm_map.get(f) != rules.get(f) for f in REQUIRED)
     if llm_map is not None and not llm_problems:

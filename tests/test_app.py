@@ -133,3 +133,43 @@ def test_high_tier_not_due_says_no_message_needed(no_llm):
     infos = [i.value for i in at.info]
     assert 'Likely to reorder on their own. No message needed yet.' in infos
     assert any(i.startswith('Not due yet, usual gap is') for i in infos)
+
+
+class _CountingFake(_PromptFake):
+    calls = 0
+
+    def create(self, messages, **kw):
+        _CountingFake.calls += 1
+        return super().create(messages, **kw)
+
+
+def test_llm_session_cap_falls_back_to_templates(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_CountingFake(), 'fake'))
+    monkeypatch.setenv('LLM_SESSION_CAP', '1')          # only the column mapping may use the LLM
+    st.cache_data.clear()
+    _CountingFake.calls = 0
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    at.button(key='confirm').click().run()
+    mapping_calls = _CountingFake.calls
+    _go(at, '2. Customers')
+    _pick_customer(at, due=True)
+    assert not at.exception and not at.error
+    captions = [c.value for c in at.caption]
+    assert 'Message source: template' in captions and 'Explanation source: template' in captions
+    assert any('LLM limit for this session reached (1 requests)' in w.value for w in at.warning)
+    assert _CountingFake.calls == mapping_calls                # no LLM call after the cap
+    st.cache_data.clear()
+
+
+def test_secrets_are_not_in_code():
+    import re
+    from pathlib import Path
+    root = Path(APP).parents[1]
+    for f in list((root / 'app').glob('*.py')) + list((root / 'scripts').glob('*.py')):
+        text = f.read_text(encoding='utf-8')
+        assert not re.search(r'(?i)(api_key|secret)\s*=\s*["\'][A-Za-z0-9_\-]{16,}', text), f
+        assert not re.search(r'\b(sk|rc)_[A-Za-z0-9]{20,}', text), f
