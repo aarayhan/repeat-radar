@@ -17,9 +17,15 @@ def _go(at, screen):
     return at.sidebar.radio(key='screen').set_value(screen).run()
 
 
+def _customers(at):
+    """All intent-group tables of the contact list, in display order, as one frame."""
+    import pandas as pd
+    return pd.concat([d.value for d in at.dataframe if 'Next step' in d.value.columns], ignore_index=True)
+
+
 def _pick_customer(at, due=True):
     """Select the first customer in the list who is (or is not) due for a message."""
-    table = at.dataframe[0].value
+    table = _customers(at)
     rows = table[(table['Next step'] != 'Not due yet') == due]
     return at.selectbox(key='customer').set_value(rows['Customer'].iloc[0]).run()
 
@@ -126,7 +132,7 @@ def test_high_tier_not_due_says_no_message_needed(no_llm):
     at.button(key='use_sample').click().run()
     at.button(key='confirm').click().run()
     _go(at, '2. Customers')
-    table = at.dataframe[0].value
+    table = _customers(at)
     rows = table[(table['Tier'] == 'high') & (table['Next step'] == 'Not due yet')]
     assert len(rows), 'sample has no high-tier customer who is not due'
     at.selectbox(key='customer').set_value(rows['Customer'].iloc[0]).run()
@@ -173,3 +179,70 @@ def test_secrets_are_not_in_code():
         text = f.read_text(encoding='utf-8')
         assert not re.search(r'(?i)(api_key|secret)\s*=\s*["\'][A-Za-z0-9_\-]{16,}', text), f
         assert not re.search(r'\b(sk|rc)_[A-Za-z0-9]{20,}', text), f
+
+
+def _open_sample(at, sample='E-commerce (synthetic)'):
+    at.selectbox(key='sample_choice').set_value(sample)
+    at.button(key='use_sample').click().run()
+    at.button(key='confirm').click().run()
+    return at
+
+
+SAMPLE_NOTE = ('Synthetic sample. Results here show how the app works, not evidence. '
+               'The evidence is on the Evidence page.')
+
+
+def test_contact_list_grouped_by_intent_with_counts_and_sample_note(no_llm):
+    import streamlit as st
+    st.cache_data.clear()
+    at = _open_sample(AppTest.from_file(APP, default_timeout=180).run())
+    assert any(SAMPLE_NOTE in i.value for i in at.info)                       # screen 1
+    _go(at, '2. Customers')
+    assert SAMPLE_NOTE in [i.value for i in at.info]                          # screen 2
+    heads = [m.value for m in at.markdown if m.value.startswith('#### ')]
+    assert [h.rsplit(' (', 1)[0][5:] for h in heads] == ['Due now', 'Slipping (overdue)', 'Lapsed', 'Not due yet']
+    groups = [d.value for d in at.dataframe if 'Next step' in d.value.columns]
+    order = {'high': 0, 'medium': 1, 'low': 2}
+    for h, g in zip(heads, groups):
+        assert h.endswith(f'({len(g):,})')                                    # count per group
+        assert list(g['Tier'].map(order)) == sorted(g['Tier'].map(order))     # tier order inside the group
+    assert any(m.value.startswith('**Due now**:') for m in at.markdown)
+    _go(at, '3. Audit')
+    assert SAMPLE_NOTE in [i.value for i in at.info]                          # screen 3
+
+
+def test_evidence_page_without_upload(no_llm):
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    _go(at, '4. Evidence (UCI)')
+    assert not at.exception and not at.error
+    assert len(at.dataframe) == 6                       # backtest, tiers, holdout, calibration, mapping, drafts
+    holdout = at.dataframe[2].value
+    assert list(holdout['Verdict']) == ['model better (interval above 0)', 'model better (interval above 0)',
+                                        'not conclusive (interval includes 0)']
+    assert any('2011-04-15' in w.value and 'not conclusive' in w.value for w in at.warning)
+    assert any('CC BY 4.0' in c.value and 'archive.ics.uci.edu' in c.value for c in at.caption)
+    assert any('build_evidence.py' in c.value for c in at.code)
+
+
+def test_global_daily_cap_falls_back_to_templates(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_CountingFake(), 'fake'))
+    monkeypatch.setenv('LLM_DAILY_CAP', '1')            # the whole app may make 1 LLM request today
+    monkeypatch.setenv('LLM_SESSION_CAP', '20')
+    st.cache_data.clear()
+    st.cache_resource.clear()                          # fresh in-memory daily counter
+    _CountingFake.calls = 0
+    at = _open_sample(AppTest.from_file(APP, default_timeout=180).run())   # the mapping uses the 1 request
+    used = _CountingFake.calls
+    _go(at, '2. Customers')
+    _pick_customer(at, due=True)
+    assert not at.exception and not at.error
+    captions = [c.value for c in at.caption]
+    assert 'Message source: template' in captions and 'Explanation source: template' in captions
+    assert any('Daily LLM limit for this app reached (1 requests)' in w.value for w in at.warning)
+    assert _CountingFake.calls == used
+    other = _open_sample(AppTest.from_file(APP, default_timeout=180).run())  # a second session shares the limit
+    assert _CountingFake.calls == used
+    st.cache_data.clear()
+    st.cache_resource.clear()

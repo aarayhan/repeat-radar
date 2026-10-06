@@ -2,11 +2,13 @@
 
 Files are processed in memory only (never written to disk, never logged). All numbers come from app/ code.
 """
+import datetime
 import hashlib
 import io
 import json
 import os
 import sys
+import threading
 from pathlib import Path
 
 import pandas as pd
@@ -23,11 +25,17 @@ from app.mapping import check_values, propose_mapping  # noqa: E402
 
 SAMPLES = {'Indonesian point of sale (synthetic)': 'kasir_indonesia.csv',
            'E-commerce (synthetic)': 'ecommerce.csv'}
-SCREENS = ['1. Upload', '2. Customers', '3. Audit']
+SCREENS = ['1. Upload', '2. Customers', '3. Audit', '4. Evidence (UCI)']
+SAMPLE_NOTE = ('Synthetic sample. Results here show how the app works, not evidence. '
+               'The evidence is on the Evidence page.')
+EVIDENCE = ROOT / 'app' / 'evidence_uci.json'
+GROUPS = [('due', 'Due now'), ('overdue', 'Slipping (overdue)'), ('lapsed', 'Lapsed'), ('not_due', 'Not due yet')]
+TIER_ORDER = {'high': 0, 'medium': 1, 'low': 2}
 NONE = '(none)'
 DEFAULT_LLM_CAP = 20   # LLM requests per session (override with LLM_SESSION_CAP)
+DEFAULT_LLM_DAILY_CAP = 500   # LLM requests per day for the whole app, in memory (override with LLM_DAILY_CAP)
 SECRET_KEYS = ('FEATHERLESS_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'LLM_PROVIDER', 'LLM_MODEL',
-               'LLM_SESSION_CAP')
+               'LLM_SESSION_CAP', 'LLM_DAILY_CAP')
 INTENT_LABEL = {'not_due': 'Not due yet', 'due': 'Due: restock reminder', 'overdue': 'Overdue: check in',
                 'lapsed': 'Lapsed: re-introduce'}
 pct = '{:.0%}'.format
@@ -102,16 +110,33 @@ def secrets_to_env():
         pass
 
 
+@st.cache_resource
+def daily_counter():
+    """App-wide LLM request counter, shared by all sessions of this server process. In memory: resets on restart
+    and when the server's date changes."""
+    return {'lock': threading.Lock(), 'day': None, 'count': 0}
+
+
 def llm_allowed(request):
-    """Session budget for LLM requests, to protect the API key on a public deploy. Each distinct request (a file's
-    mapping, a customer's explanation, a customer's draft) counts once; cached repeats do not count again."""
-    cap = int(os.getenv('LLM_SESSION_CAP', DEFAULT_LLM_CAP))
+    """Budgets for LLM requests, to protect the API key on a public deploy: per session (LLM_SESSION_CAP) and per
+    day for the whole app (LLM_DAILY_CAP). Each distinct request (a file's mapping, a customer's explanation, a
+    customer's draft) counts once per session; cached repeats do not count again."""
     used = st.session_state.setdefault('llm_requests', set())
     if request in used:
         return True
+    cap = int(os.getenv('LLM_SESSION_CAP', DEFAULT_LLM_CAP))
     if len(used) >= cap:
         st.session_state['llm_cap_hit'] = cap
         return False
+    daily_cap, c = int(os.getenv('LLM_DAILY_CAP', DEFAULT_LLM_DAILY_CAP)), daily_counter()
+    with c['lock']:
+        today = datetime.date.today().isoformat()
+        if c['day'] != today:
+            c['day'], c['count'] = today, 0
+        if c['count'] >= daily_cap:
+            st.session_state['llm_daily_hit'] = daily_cap
+            return False
+        c['count'] += 1
     used.add(request)
     return True
 
@@ -120,6 +145,9 @@ def cap_notice():
     if st.session_state.get('llm_cap_hit'):
         st.warning(f"LLM limit for this session reached ({st.session_state['llm_cap_hit']} requests). "
                    'The app now uses built-in rules and templates; everything else works as before.')
+    if st.session_state.get('llm_daily_hit'):
+        st.warning(f"Daily LLM limit for this app reached ({st.session_state['llm_daily_hit']} requests). "
+                   'The app uses built-in rules and templates until the limit resets; everything else works.')
 
 
 # ---------- screen 1: upload and mapping ----------
@@ -150,7 +178,7 @@ def screen_upload():
     name, data = f
     key = hashlib.sha256(data).hexdigest()
     if st.session_state.get('is_sample'):
-        st.info(f'Using **{name}**: synthetic sample data. Made-up customers, not a real business.')
+        st.info(f'Using **{name}**, made-up customers. ' + SAMPLE_NOTE)
     try:
         raw, dropped_sheets = read_table(key, name, data)
     except Exception as e:  # unreadable file
@@ -226,6 +254,8 @@ def confirmed_result():
     if not f or not conf or conf[0] != hashlib.sha256(f[1]).hexdigest():
         st.info('Locked. Upload a file and confirm the column mapping on screen 1 first.')
         return None
+    if st.session_state.get('is_sample'):
+        st.info(SAMPLE_NOTE)
     raw, _ = read_table(conf[0], f[0], f[1])
     result = analyse(conf[0], conf[1], raw)
     if 'error' in result:
@@ -262,16 +292,24 @@ def screen_customers():
     inv, s = r['inv'], r['scored']
     as_of = inv['date'].max() + pd.Timedelta(days=1)          # the same origin score_now uses for 'recency'
     st.write(f'Counted as of {as_of.day} {as_of:%b %Y}, the day after the last order in your file.')
-    st.dataframe(pd.DataFrame({'Customer': s['customer_id'].astype(str), 'Tier': s['tier'],
-                               'Last order': s['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': s['n_orders'],
-                               'Days since last order': s['recency'],
-                               'Next step': s['intent'].map(INTENT_LABEL)}),
-                 hide_index=True, width='stretch')
+    s = s.assign(_tier=s['tier'].map(TIER_ORDER)).sort_values(['_tier', 'rank'])   # inside a group: tier, then rank
+    counts = s['intent'].value_counts()
+    st.write(' | '.join(f'**{label}**: {counts.get(i, 0):,}' for i, label in GROUPS))
+    order = []
+    for intent, label in GROUPS:
+        g = s[s['intent'] == intent]
+        st.markdown(f'#### {label} ({len(g):,})')
+        st.dataframe(pd.DataFrame({'Customer': g['customer_id'].astype(str), 'Tier': g['tier'],
+                                   'Last order': g['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': g['n_orders'],
+                                   'Days since last order': g['recency'],
+                                   'Next step': g['intent'].map(INTENT_LABEL)}),
+                     hide_index=True, width='stretch')
+        order += list(g['customer_id'])
     for reason, n in r['not_scored'].groupby('reason').size().items():
         st.write(f'**{n:,} customers not scored**: {reason}.')
 
     st.subheader('Why this customer, and a draft message')
-    cust = st.selectbox('Customer', list(s['customer_id']), format_func=str, key='customer')
+    cust = st.selectbox('Customer', order, format_func=str, key='customer')
     lang = st.radio('Message language', ['English', 'Indonesian'], horizontal=True, key='msg_lang')
     row = s[s['customer_id'] == cust].iloc[0]
     orders = inv[inv['customer_id'] == cust]
@@ -343,6 +381,75 @@ def screen_audit():
              + f" ({a['ranker_reason']}).")
 
 
+# ---------- screen 4: evidence (UCI) ----------
+
+def screen_evidence():
+    """Read-only results of our own runs on the public UCI dataset (app/evidence_uci.json, built by
+    scripts/build_evidence.py). No raw data is shipped with the app."""
+    st.header('4. Evidence (UCI)')
+    try:
+        e = json.loads(EVIDENCE.read_text(encoding='utf-8'))
+    except (OSError, ValueError):
+        st.error('The evidence file is missing. Run python scripts/build_evidence.py locally.')
+        return
+    d = e['dataset']
+    st.write(f"These are the results of our own tests on the public **{d['name']}** dataset: {d['description']} "
+             f"{d['customers']:,} customers, {d['invoices_after_cleaning']:,} invoices after cleaning. "
+             'This page is read-only; the demo samples elsewhere in the app are synthetic.')
+    st.caption(f"Data: {d['name']}, {d['source']}, {d['url']}. Licensed {d['license']}; used with attribution, "
+               'not modified except for the cleaning described in the repository.')
+    pct1 = '{:.1%}'.format
+
+    st.subheader('Backtest: 3 test windows, all customers')
+    b = pd.DataFrame(e['backtest_all_customers'])
+    st.dataframe(pd.DataFrame({'Test window starts': b['window'], 'Customers': b['customers'],
+                               'Base rate': b['base_rate'].map(pct1), 'AUC model': b['auc_model'],
+                               'AUC recency': b['auc_recency'], 'Top-20% hit model': b['top20_model'].map(pct1),
+                               'Top-20% hit recency': b['top20_recency'].map(pct1)}), hide_index=True, width='stretch')
+    t = {k: pd.DataFrame(v) for k, v in e['tiers_all_customers'].items()}
+    fmt = lambda r: f'{pct1(r.pooled)} ({pct1(r.min)} to {pct1(r.max)})'  # noqa: E731
+    st.dataframe(pd.DataFrame({'Tier': t['model']['tier'],
+                               'Model, pooled (min to max)': [fmt(r) for r in t['model'].itertuples()],
+                               'Recency rule, pooled (min to max)': [fmt(r) for r in t['recency'].itertuples()]}),
+                 hide_index=True, width='stretch')
+
+    st.subheader('Locked holdout: 20% of customers, run once, with 95% bootstrap intervals')
+    h = pd.DataFrame(e['holdout'])
+    st.dataframe(pd.DataFrame({'Test window starts': h['window'], 'Customers': h['customers'],
+                               'In top 20%': h['top20_customers'], 'Top-20% hit model': h['top20_model'].map(pct1),
+                               'Top-20% hit recency': h['top20_recency'].map(pct1),
+                               'Difference (points)': (h['diff'] * 100).round(1),
+                               '95% interval (points)': [f'{lo * 100:+.1f} to {hi * 100:+.1f}'
+                                                         for lo, hi in zip(h['ci_low'], h['ci_high'])],
+                               'Verdict': h['verdict']}), hide_index=True, width='stretch')
+    for r in h.itertuples():
+        if r.ci_low <= 0 <= r.ci_high:
+            st.warning(f"{r.window}: the model's win is not conclusive (the interval includes zero).")
+
+    st.subheader('Calibration per window')
+    st.dataframe(pd.DataFrame({'Test window starts': b['window'], 'ECE, all customers': b['ece'],
+                               'Brier, all customers': b['brier'], 'ECE, holdout': h['ece']}),
+                 hide_index=True, width='stretch')
+    st.caption('ECE: average gap between predicted and observed reorder rates (0 is perfect). Probabilities drift '
+               'in the most recent window, so the app shows tier hit rates instead of probabilities.')
+
+    st.subheader('Column mapping test (UCI and two variants made from it)')
+    st.dataframe(pd.DataFrame(e['mapping']).rename(columns={'file': 'File', 'rules': 'Built-in rules', 'llm': 'LLM'}),
+                 hide_index=True, width='stretch')
+
+    st.subheader('Follow-up drafts')
+    st.dataframe(pd.DataFrame(e['drafts']).rename(columns={
+        'run': 'Run', 'verifier': 'Checks', 'customers': 'Customers', 'first_try': 'Passed first try',
+        'after_repair': 'Passed after repair', 'rejected': 'Rejected', 'good': 'Good', 'note': 'Note'}),
+        hide_index=True, width='stretch')
+    st.caption('Good means the code found every fact true and a usual product mentioned. It does not judge tone; '
+               'drafts are for you to edit before sending.')
+
+    st.subheader('Reproduce locally')
+    st.code('\n'.join(e['reproduce']), language='bash')
+    st.caption(f"Built from commit {e['built_from_commit']}.")
+
+
 # ---------- main ----------
 
 def main():
@@ -353,7 +460,8 @@ def main():
                'own past data. ForgeHacks 2026, AI + Business.')
     screen = st.sidebar.radio('Step', SCREENS, key='screen')
     try:
-        {SCREENS[0]: screen_upload, SCREENS[1]: screen_customers, SCREENS[2]: screen_audit}[screen]()
+        {SCREENS[0]: screen_upload, SCREENS[1]: screen_customers, SCREENS[2]: screen_audit,
+         SCREENS[3]: screen_evidence}[screen]()
     except Exception as e:  # never show a traceback
         st.error(f'Something went wrong: {type(e).__name__}: {e}')
 
