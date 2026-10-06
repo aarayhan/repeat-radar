@@ -77,6 +77,8 @@ def test_disagreement_blocks_confirm_until_user_picks(no_llm, monkeypatch):
     swapped = {'customer_id': 'customer_email', 'invoice_id': 'order_id', 'date': 'order_date',
                'quantity': 'unit_price', 'price': 'quantity', 'country': None, 'product': None}
     monkeypatch.setattr(mapping_mod, 'map_columns', lambda *a, **k: (swapped, []))
+    import app.llm as llm_mod
+    monkeypatch.setattr(llm_mod, 'client', lambda: (object(), 'fake'))   # a key is available (map_columns is faked)
     st.cache_data.clear()
     at = AppTest.from_file(APP, default_timeout=180).run()
     at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
@@ -246,3 +248,87 @@ def test_global_daily_cap_falls_back_to_templates(monkeypatch):
     assert _CountingFake.calls == used
     st.cache_data.clear()
     st.cache_resource.clear()
+
+
+ECOM_MAPPING = {'customer_id': 'customer_email', 'invoice_id': 'order_id', 'date': 'order_date',
+                'quantity': 'quantity', 'price': 'unit_price', 'country': None, 'product': None, 'line_total': None}
+
+
+class _MappingFake(_PromptFake):
+    """Answers the mapping prompt with the true e-commerce mapping; counts mapping calls."""
+    mapping_calls = 0
+
+    def create(self, messages, **kw):
+        if 'Map the columns' in messages[0]['content']:
+            _MappingFake.mapping_calls += 1
+            import json as _json
+            msg = type('M', (), {'content': _json.dumps(ECOM_MAPPING)})
+            return type('R', (), {'choices': [type('C', (), {'message': msg, 'finish_reason': 'stop'})]})
+        return super().create(messages, **kw)
+
+
+def _no_key():
+    from app.llm import LLMUnavailable
+    raise LLMUnavailable('FEATHERLESS_API_KEY is not set (.env)')
+
+
+def test_fallback_mapping_without_key_is_not_reused_once_a_key_is_available(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    monkeypatch.setattr(llm_mod, 'client', _no_key)                       # no key yet
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    assert 'Proposed by the built-in rules.' in [m.value for m in at.markdown]
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_MappingFake(), 'fake'))   # the key is added; caches are kept
+    _MappingFake.mapping_calls = 0
+    at2 = AppTest.from_file(APP, default_timeout=180).run()
+    at2.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at2.button(key='use_sample').click().run()
+    assert 'Proposed by the LLM.' in [m.value for m in at2.markdown] and _MappingFake.mapping_calls == 1
+    st.cache_data.clear()
+    st.cache_resource.clear()
+
+
+def test_failed_llm_mapping_is_not_kept_in_the_cache(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+
+    class _Down(_PromptFake):
+        def create(self, messages, **kw):
+            raise ConnectionError('provider down')
+    st.cache_data.clear()
+    st.cache_resource.clear()
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_Down(), 'fake'))
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    assert 'Proposed by the built-in rules.' in [m.value for m in at.markdown]
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_MappingFake(), 'fake'))  # provider back
+    at2 = AppTest.from_file(APP, default_timeout=180).run()
+    at2.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at2.button(key='use_sample').click().run()
+    assert 'Proposed by the LLM.' in [m.value for m in at2.markdown]
+    st.cache_data.clear()
+    st.cache_resource.clear()
+
+
+def test_no_key_message_and_trust_line_without_variable_names(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+    st.cache_data.clear()
+    monkeypatch.setattr(llm_mod, 'client', _no_key)
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    assert ('**We do not just make predictions. We only make them when the data shows we can trust them.**'
+            in [m.value for m in at.markdown])
+    at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
+    at.button(key='use_sample').click().run()
+    captions = [c.value for c in at.caption]
+    assert 'AI suggestions are off right now, so the built-in rules were used.' in captions
+    shown = ' '.join(e.value for kind in (at.caption, at.markdown, at.info, at.warning, at.error) for e in kind
+                     if isinstance(e.value, str))
+    for bad in ('.env', 'FEATHERLESS', 'API_KEY', 'LLM_PROVIDER', 'LLM_MODEL'):
+        assert bad not in shown, bad
+    st.cache_data.clear()

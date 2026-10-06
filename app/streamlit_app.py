@@ -26,6 +26,8 @@ from app.mapping import check_values, propose_mapping  # noqa: E402
 SAMPLES = {'Indonesian point of sale (synthetic)': 'kasir_indonesia.csv',
            'E-commerce (synthetic)': 'ecommerce.csv'}
 SCREENS = ['1. Upload', '2. Customers', '3. Audit', '4. Evidence (UCI)']
+TRUST_LINE = 'We do not just make predictions. We only make them when the data shows we can trust them.'
+NO_AI_MESSAGE = 'AI suggestions are off right now, so the built-in rules were used.'
 SAMPLE_NOTE = ('Synthetic sample. Results here show how the app works, not evidence. '
                'The evidence is on the Evidence page.')
 EVIDENCE = ROOT / 'app' / 'evidence_uci.json'
@@ -56,8 +58,28 @@ def read_table(key, name, _data):
 
 
 @st.cache_data(show_spinner=False, max_entries=8)
-def proposal(key, use_llm, _raw):
-    return propose_mapping(_raw, use_llm=use_llm)
+def llm_proposal(key, _raw):
+    """Proposal made while an LLM key is available. Entries where the LLM was not used are removed by proposal()."""
+    return propose_mapping(_raw)
+
+
+@st.cache_data(show_spinner=False, max_entries=8)
+def rules_proposal(key, _raw):
+    """Built-in rules only. Served only while no LLM can be used, so it is never reused once a key is available."""
+    return propose_mapping(_raw, use_llm=False)
+
+
+def proposal(key, raw):
+    """(proposal, why the LLM was off: 'no_key', 'budget' or None). A proposal made without the LLM is never reused
+    after the LLM becomes available: the two caches are separate, and an LLM attempt that fell back is not kept."""
+    if llm_client() is None:
+        return rules_proposal(key, raw), 'no_key'
+    if not llm_allowed(f'map:{key}'):
+        return rules_proposal(key, raw), 'budget'
+    p = llm_proposal(key, raw)
+    if p['llm'] is None:      # the LLM failed this time (for example an API error): do not keep the fallback
+        llm_proposal.clear(key, raw)
+    return p, None
 
 
 @st.cache_data(show_spinner='Cleaning, backtesting and scoring...', max_entries=8)
@@ -170,6 +192,7 @@ def current_file():
 
 
 def screen_upload():
+    st.markdown(f'**{TRUST_LINE}**')
     st.header('1. Upload')
     f = current_file()
     if f is None:
@@ -189,12 +212,14 @@ def screen_upload():
         st.warning(f'{dropped_sheets} sheet(s) with different columns were ignored; only sheets shaped like the first are used.')
 
     columns = list(raw.columns)
-    p = proposal(key, llm_allowed(f'map:{key}'), raw)
+    p, llm_off = proposal(key, raw)
     cap_notice()
     src = {'llm': 'the LLM', 'rules': 'the built-in rules', None: 'nobody (please map by hand)'}[p['source']]
     st.subheader('Column mapping')
     st.write(f'Proposed by {src}.')
-    if p['llm_error']:
+    if llm_off == 'no_key':
+        st.caption(NO_AI_MESSAGE)
+    elif llm_off is None and p['llm_error']:
         st.caption(f"LLM not used: {p['llm_error']}")
     st.caption('If an LLM key is configured, the column names and 3 sample rows are sent to the LLM provider.')
 
