@@ -10,7 +10,7 @@ T = pd.Timestamp
 ORDERS = pd.DataFrame({'invoice_id': ['NT-100001', 'NT-100007', 'NT-100012', 'NT-100020'],
                        'date': [T('2024-01-01'), T('2024-01-31'), T('2024-03-01'), T('2024-04-10')],
                        'amount': [10000.0, 25000.0, 12500.0, 40000.0]})
-FACTS = customer_facts(ORDERS, 'high', as_of=T('2024-05-01'))
+FACTS = customer_facts(ORDERS, 'high', 21)
 
 
 def test_customer_facts():
@@ -18,7 +18,7 @@ def test_customer_facts():
     assert FACTS['last_order'] == '2024-04-10' and FACTS['days_since_last'] == 21
     assert FACTS['avg_days_between_orders'] == pytest.approx((30 + 30 + 40) / 3, abs=0.05)
     assert [o['invoice_id'] for o in FACTS['last_orders']] == ['NT-100020', 'NT-100012', 'NT-100007']
-    one = customer_facts(ORDERS.head(1), 'low', as_of=T('2024-01-11'))
+    one = customer_facts(ORDERS.head(1), 'low', 10)
     assert one['avg_days_between_orders'] is None and one['days_since_last'] == 10
 
 

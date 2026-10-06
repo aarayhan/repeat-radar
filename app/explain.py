@@ -7,14 +7,12 @@ Every text function returns (text, source) with source 'llm' or 'template'.
 import json
 import re
 
-import pandas as pd
-
 LANGS = {'en': 'English', 'id': 'Indonesian'}
 
 
-def customer_facts(orders, tier, as_of):
-    """orders: this customer's invoices (invoice_id, date, amount). tier: from audit.score_now.
-    as_of: the date the list was made (score_now uses the day after the last order in the file)."""
+def customer_facts(orders, tier, days_since_last):
+    """orders: this customer's invoices (invoice_id, date, amount). tier and days_since_last: from audit.score_now
+    (its 'recency', counted from the day after the last order in the file); never recomputed here."""
     o = orders.sort_values('date')
     gaps = o['date'].diff().dt.days.dropna()
     last = o.iloc[::-1].head(3)
@@ -22,7 +20,7 @@ def customer_facts(orders, tier, as_of):
         'tier': tier,
         'n_orders': len(o),
         'last_order': o['date'].iloc[-1].strftime('%Y-%m-%d'),
-        'days_since_last': int((pd.Timestamp(as_of) - o['date'].iloc[-1]).days),
+        'days_since_last': int(days_since_last),
         'avg_days_between_orders': round(float(gaps.mean()), 1) if len(gaps) else None,
         'last_orders': [{'invoice_id': str(r.invoice_id), 'date': r.date.strftime('%Y-%m-%d'),
                          'amount': round(float(r.amount), 2)} for r in last.itertuples()],
