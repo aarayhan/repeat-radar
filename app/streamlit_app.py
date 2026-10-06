@@ -15,7 +15,7 @@ ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # `streamlit run app/streamlit_app.py` puts app/ on the path, not the repo root
 from app.audit import compare_tiers, recommend, tier_track_record  # noqa: E402
 from app.engine import clean  # noqa: E402
-from app.drafts import draft_facts, llm_draft, usual_products  # noqa: E402
+from app.drafts import draft_facts, intents, llm_draft, usual_products  # noqa: E402
 from app.explain import customer_facts, llm_explanation, template_message  # noqa: E402
 from app.llm import OPTIONAL, REQUIRED, LLMUnavailable, client, validate_mapping  # noqa: E402
 from app.mapping import check_values, propose_mapping  # noqa: E402
@@ -24,6 +24,8 @@ SAMPLES = {'Indonesian point of sale (synthetic)': 'kasir_indonesia.csv',
            'E-commerce (synthetic)': 'ecommerce.csv'}
 SCREENS = ['1. Upload', '2. Customers', '3. Audit']
 NONE = '(none)'
+INTENT_LABEL = {'not_due': 'Not due yet', 'due': 'Due: restock reminder', 'overdue': 'Overdue: check in',
+                'lapsed': 'Lapsed: re-introduce'}
 pct = '{:.0%}'.format
 
 
@@ -57,6 +59,7 @@ def analyse(key, mapping_json, _raw):
     out = {'inv': inv, 'warnings': inv.attrs.get('warnings', []), **recommend(inv)}
     if out['audit']['status'] == 'ok':
         out['records'] = {r: tier_track_record(out['audit'], r) for r in ('model', 'recency')}
+        out['scored'] = out['scored'].assign(intent=intents(inv, out['scored']))
     m = json.loads(mapping_json)
     if m.get('product'):   # products are only used for the facts of a draft
         lines = pd.DataFrame({'customer_id': _raw[m['customer_id']], 'invoice_id': _raw[m['invoice_id']],
@@ -216,9 +219,13 @@ def screen_customers():
                    help=f"Pooled over the windows: {pct(row['pooled'])}")
     st.caption('These are measured hit rates of each tier in the past, not a probability for any one customer.')
 
-    s = r['scored']
+    inv, s = r['inv'], r['scored']
+    as_of = inv['date'].max() + pd.Timedelta(days=1)          # the same origin score_now uses for 'recency'
+    st.write(f'Counted as of {as_of.day} {as_of:%b %Y}, the day after the last order in your file.')
     st.dataframe(pd.DataFrame({'Customer': s['customer_id'].astype(str), 'Tier': s['tier'],
-                               'Last order': s['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': s['n_orders']}),
+                               'Last order': s['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': s['n_orders'],
+                               'Days since last order': s['recency'],
+                               'Next step': s['intent'].map(INTENT_LABEL)}),
                  hide_index=True, width='stretch')
     for reason, n in r['not_scored'].groupby('reason').size().items():
         st.write(f'**{n:,} customers not scored**: {reason}.')
@@ -226,17 +233,22 @@ def screen_customers():
     st.subheader('Why this customer, and a draft message')
     cust = st.selectbox('Customer', list(s['customer_id']), format_func=str, key='customer')
     lang = st.radio('Message language', ['English', 'Indonesian'], horizontal=True, key='msg_lang')
-    inv = r['inv']
-    tier = s.loc[s['customer_id'] == cust, 'tier'].iloc[0]
-    facts = customer_facts(inv[inv['customer_id'] == cust], tier, as_of=inv['date'].max() + pd.Timedelta(days=1))
+    row = s[s['customer_id'] == cust].iloc[0]
+    orders = inv[inv['customer_id'] == cust]
+    facts = customer_facts(orders, row['tier'], row['recency'])
     text, source = llm_explanation(facts, 'en', llm_client())
     st.write(text)
     st.caption(f'Explanation source: {source}')
+    lines = r.get('lines')
+    products = usual_products(lines[lines['customer_id'] == cust]) if lines is not None else []
+    dfacts = draft_facts(orders, products, cust, row['tier'], rec.loc[row['tier'], 'pooled'], row['recency'])
+    gap = dfacts['typical_gap_days']
+    st.write(f"**Reason (for you, not in the message):** last order {row['recency']} days ago, "
+             f"usual gap {gap if gap is not None else 'unknown'} days, so: {INTENT_LABEL[dfacts['intent']]}.")
+    if dfacts['intent'] == 'not_due':
+        st.info(f'Not due yet, usual gap is {gap} days.')
+        return
     if lang == 'English':    # verified LLM drafts were evaluated in English only (docs/H2_REPORT.md section 9)
-        lines = r.get('lines')
-        products = usual_products(lines[lines['customer_id'] == cust]) if lines is not None else []
-        dfacts = draft_facts(inv[inv['customer_id'] == cust], products, cust, tier, rec.loc[tier, 'pooled'],
-                             as_of=inv['date'].max() + pd.Timedelta(days=1))
         d = verified_draft(st.session_state['confirmed'][0], json.dumps(dfacts), r.get('catalogue', ()))
         msg, msg_source = d['text'], d['source']
     else:
@@ -244,9 +256,9 @@ def screen_customers():
     st.text_area('Draft message', msg, key=f'msg_{cust}_{lang}')
     st.caption(f'Message source: {msg_source}')
     if msg_source != 'template':
-        st.caption('Checked by code: every number, date and product matches this customer\'s facts, and no blocked '
-                   'promise (discount, free shipping, stock, deadline...) appears. The check cannot catch every '
-                   'claim, so read it before sending.')
+        st.caption('Checked by code: products and dates match this customer\'s facts, no duration is written, and no '
+                   'blocked promise (discount, free shipping, stock, deadline, drop by...) appears. The check cannot '
+                   'catch every claim, so read it before sending.')
 
 
 # ---------- screen 3: audit ----------

@@ -99,7 +99,6 @@ def main():
     a = run_audit(dev)
     rec = tier_track_record(a, a['ranker'])
     now = score_now(dev, a['ranker'])['scored']
-    as_of = dev['date'].max() + pd.Timedelta(days=1)
     run1_ids = {r['customer_id'] for r in json.loads((DATA / 'draft_eval.json').read_text(encoding='utf-8'))}
     pool = sorted(c for c in now['customer_id'] if str(int(c)) not in run1_ids)
     picked = random.Random(SEED).sample(pool, N)
@@ -111,7 +110,7 @@ def main():
     for i, c in enumerate(picked, 1):
         row = now[now['customer_id'] == c].iloc[0]
         facts = draft_facts(dev[dev['customer_id'] == c], usual_products(lines[lines['customer_id'] == c]),
-                            c, row['tier'], rec.loc[row['tier'], 'pooled'], as_of)
+                            c, row['tier'], rec.loc[row['tier'], 'pooled'], row['recency'])
         for retry in range(3):          # retry the whole draft with backoff on API errors only
             r = llm_draft(facts, llm, catalogue)
             if not any(p and p[0].startswith('API error') for _, p, _ in r['attempts']):

@@ -49,7 +49,6 @@ def main():
     a = run_audit(dev)
     rec = tier_track_record(a, a['ranker'])
     now = score_now(dev, a['ranker'])['scored']
-    as_of = dev['date'].max() + pd.Timedelta(days=1)
     picked = random.Random(SEED).sample(sorted(now['customer_id']), N)
     llm = client()
     print(f"model {llm[1]} | ranker {a['ranker']} | {N} development customers, seed {SEED} | "
@@ -59,7 +58,7 @@ def main():
     for i, c in enumerate(picked, 1):
         row = now[now['customer_id'] == c].iloc[0]
         facts = draft_facts(dev[dev['customer_id'] == c], usual_products(lines[lines['customer_id'] == c]),
-                            c, row['tier'], rec.loc[row['tier'], 'pooled'], as_of)
+                            c, row['tier'], rec.loc[row['tier'], 'pooled'], row['recency'])
         r = llm_draft(facts, llm, catalogue)
         results.append({'customer_id': facts['customer_id'], 'facts': facts, **r})
         print(f"{i:2d}. {r['source']:13s} {r['seconds']:5.1f}s", flush=True)

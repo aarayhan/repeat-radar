@@ -17,6 +17,13 @@ def _go(at, screen):
     return at.sidebar.radio(key='screen').set_value(screen).run()
 
 
+def _pick_customer(at, due=True):
+    """Select the first customer in the list who is (or is not) due for a message."""
+    table = at.dataframe[0].value
+    rows = table[(table['Next step'] != 'Not due yet') == due]
+    return at.selectbox(key='customer').set_value(rows['Customer'].iloc[0]).run()
+
+
 def test_screens_locked_until_mapping_confirmed(no_llm):
     at = AppTest.from_file(APP, default_timeout=180).run()
     for screen in ('2. Customers', '3. Audit'):
@@ -36,11 +43,19 @@ def test_each_sample_end_to_end(no_llm, sample):
 
     _go(at, '2. Customers')
     assert not at.exception and not at.error
-    captions = [c.value for c in at.caption]
-    assert 'Explanation source: template' in captions and 'Message source: template' in captions
+    assert any(m.value.startswith('Counted as of ') and 'the day after the last order in your file' in m.value
+               for m in at.markdown)
     assert len(at.metric) == 3                                     # one measured hit rate per tier
     table = at.dataframe[0].value
-    assert list(table.columns) == ['Customer', 'Tier', 'Last order', 'Orders']   # no probability column
+    assert list(table.columns) == ['Customer', 'Tier', 'Last order', 'Orders', 'Days since last order',
+                                   'Next step']                    # no probability column
+    _pick_customer(at, due=True)
+    assert not at.exception and not at.error
+    captions = [c.value for c in at.caption]
+    assert 'Explanation source: template' in captions and 'Message source: template' in captions
+    _pick_customer(at, due=False)
+    assert any(i.value.startswith('Not due yet, usual gap is') for i in at.info)
+    assert not any(c.value.startswith('Message source') for c in at.caption)
 
     _go(at, '3. Audit')
     assert not at.exception and not at.error
@@ -95,6 +110,7 @@ def test_verified_llm_draft_is_labelled(monkeypatch):
     at.button(key='use_sample').click().run()
     at.button(key='confirm').click().run()
     _go(at, '2. Customers')
+    _pick_customer(at, due=True)
     assert not at.exception and not at.error
     captions = [c.value for c in at.caption]
     assert 'Message source: llm' in captions and any(c.startswith('Checked by code') for c in captions)

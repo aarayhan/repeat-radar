@@ -19,6 +19,8 @@ export file (csv/xlsx)
 ## Features (per customer, at an origin date)
 `recency` (days since last order), `tenure` (days since first order), `n90` (orders in the last 90 days), `log_avg_order_value`, `log_n_orders`.
 
+Reference date convention: "days since last order" is always counted from the day after the last order date in the uploaded file (never today's date). It is computed once, as `recency` in `audit.score_now`, and the same value is used for scoring, the draft intent, and the reason shown on screen.
+
 ## Model
 Logistic regression. Target: ordered again within the next 56 days.
 Training uses only origins whose outcomes end before the test origin. No leakage.
