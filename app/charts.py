@@ -55,7 +55,7 @@ def _guides():
     spokes = pd.DataFrame([{'spoke': s, 'i': i, 'x': _xy(r, s)[0], 'y': _xy(r, s)[1]}
                            for s in (0, 120, 240) for i, r in enumerate((0.0, R_EDGE - 0.25))])
     ring_text = pd.DataFrame([{'x': _xy(r, 2)[0] + 0.06, 'y': _xy(r, 2)[1], 'text': t} for r, t in   # on the empty spoke
-                              ((0.8, 'usual gap x0.8'), (1.5, 'x1.5'), (R_CAP + 0.075, 'over a year'))])
+                              ((0.8, 'x0.8'), (1.5, 'x1.5'), (R_CAP + 0.075, 'over a year'))])
     sector_text = pd.DataFrame([{'x': _xy(R_EDGE - 0.05, d)[0], 'y': _xy(R_EDGE - 0.05, d)[1], 'text': t}
                                 for d, t in ((60, 'High tier'), (180, 'Medium tier'), (300, 'Low tier'))])
     return rings, spokes, ring_text, sector_text
