@@ -77,7 +77,7 @@ Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (U
   - a locked holdout of 20% of customers, run once: 82% / 65% / 70% vs 59% / 51% / 63%.
 - The app shows each tier's measured hit rate instead of a probability, and refuses to score when evidence is weak:
   - customers with fewer than 2 orders;
-  - files with too little history;
+  - files with too little history: fewer than 2 test windows that each have at least 50 customers with 2 or more earlier orders;
   - if the model does not beat the simple rule, it says so and uses the rule.
 - Column mapping by rules works on 3 differently shaped exports (UCI and two synthetic ones).
 - Text dates are read safely: day-first and month-first are detected, conflicting orders and 2-digit years are refused, and unreadable rows are counted.

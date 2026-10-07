@@ -124,38 +124,48 @@ def shown_percents(m, r):
     return a, b, d
 
 
-def window_bars(windows, height=260):
+def top20_size(n):
+    """How many customers are in the top 20% of n: the same cut as engine.top_k_hit and the high tier."""
+    return max(1, int(n * 0.2))
+
+
+def window_bars(windows, height=280):
     """Grouped bars per test window: top-20% hit rate of the model and of the simple rule; base rate as a dashed
     line across the group. Drawn on a numeric x axis (window index) so the dashed line can span the group.
-    windows needs origin, top20_model, top20_recency, base_rate."""
+    windows needs origin, n, top20_model, top20_recency, base_rate. Each label: the rate over the count, as in
+    '86%' / '(30 of 35)'."""
     w = windows.reset_index(drop=True)
     labels = [window_label(o) for o in w['origin']]
     rows = []
     for i, r in w.iterrows():
         a, b, d = shown_percents(r['top20_model'], r['top20_recency'])
-        rows.append({'method': 'Model', 'value': r['top20_model'], 'label': f'{a:.{d}f}%', 'x': i - 0.41,
-                     'x2': i - 0.02, 'mid': i - 0.215})
-        rows.append({'method': 'Simple rule', 'value': r['top20_recency'], 'label': f'{b:.{d}f}%', 'x': i + 0.02,
-                     'x2': i + 0.41, 'mid': i + 0.215})
+        k = top20_size(r['n'])
+        for method, rate, shown, x in (('Model', r['top20_model'], a, i - 0.41),
+                                       ('Simple rule', r['top20_recency'], b, i + 0.02)):
+            label, of = f'{shown:.{d}f}%', f'({round(rate * k)} of {k})'
+            rows.append({'method': method, 'value': rate, 'label': label, 'of': of, 'text': f'{label}\n{of}',
+                         'x': x, 'x2': x + 0.39, 'mid': x + 0.195})
     long = pd.DataFrame(rows)
     base = pd.DataFrame({'x': [i - 0.47 for i in range(len(w))], 'x2': [i + 0.47 for i in range(len(w))],
                          'base_rate': w['base_rate'], 'window': labels})
     axis = alt.Axis(values=list(range(len(w))), labelExpr=f"{labels}[datum.value]", title=None, grid=False,
                     labelFontSize=12, ticks=False, domain=False)
     xs = alt.Scale(domain=[-0.6, len(w) - 0.4])
-    yv = alt.Y('value:Q', title='Share of the top 20% who ordered again', scale=alt.Scale(domain=[0, 1]),
-               axis=alt.Axis(format='%', tickCount=5))
+    yv = alt.Y('value:Q', title='Share of the top 20% who ordered again', scale=alt.Scale(domain=[0, 1.12]),
+               axis=alt.Axis(format='%', values=[0, 0.2, 0.4, 0.6, 0.8, 1]))      # headroom for 2-line labels
     color = alt.Color('method:N', scale=alt.Scale(domain=list(METHOD_COLORS), range=list(METHOD_COLORS.values())),
                       legend=alt.Legend(title=None, orient='top'))
     bars = alt.Chart(long).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
         alt.X('x:Q', scale=xs, axis=axis), x2='x2:Q', y=yv, y2=alt.datum(0), color=color,
-        tooltip=[alt.Tooltip('method:N', title='Ranking'), alt.Tooltip('label:N', title='Top 20%')])
-    text = alt.Chart(long).mark_text(dy=-7, fontSize=11, color=INK).encode(   # labels rounded in Python, as in
-        alt.X('mid:Q', scale=xs), yv, text='label:N')                          # window_takeaway
+        tooltip=[alt.Tooltip('method:N', title='Ranking'), alt.Tooltip('label:N', title='Top 20%'),
+                 alt.Tooltip('of:N', title='Ordered again')])
+    text = [alt.Chart(long).mark_text(dy=dy, fontSize=size, color=INK, baseline='bottom').encode(   # rounded in
+                alt.X('mid:Q', scale=xs), yv, text=f'{field}:N')                                   # Python, as in
+            for field, dy, size in (('label', -17, 11), ('of', -4, 10))]                           # window_takeaway
     rule = alt.Chart(base).mark_rule(color=INK, strokeWidth=2, strokeDash=[6, 4]).encode(
         alt.X('x:Q', scale=xs), x2='x2:Q', y='base_rate:Q',
         tooltip=[alt.Tooltip('window:N', title='Window'), alt.Tooltip('base_rate:Q', title='Base rate', format='.0%')])
-    return alt.layer(bars, rule, text).properties(height=height).configure(font=FONT, background='transparent')
+    return alt.layer(bars, rule, *text).properties(height=height).configure(font=FONT, background='transparent')
 
 
 def window_takeaway(windows, ranker):

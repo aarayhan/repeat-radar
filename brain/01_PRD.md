@@ -22,7 +22,7 @@ Owner or sales lead of a small wholesaler who sells to repeat business customers
 3. **Audit.** On the user's own history, per test window: AUC and top-20% hit rate of the model vs a simple recency rule ("most recent buyers first"), plus the base rate.
 4. **Refusals.** The app refuses, and says why, in three cases:
    - A customer with fewer than 2 orders is not scored.
-   - If the file is too short to form at least 2 backtest windows (about 371 days with the 8-week horizon), or a window has fewer than 50 customers or no variation in outcomes, nothing is scored. The app reports "insufficient data" and names the windows it could not form.
+   - A backtest window is dropped if it has fewer than 50 test customers (customers with 2 or more orders before the window starts; each of them gets a label, ordered again within 8 weeks or not), if everyone or no one reordered in it or in one of its 3 training windows, or if the file does not reach back far enough to train it. If fewer than 2 windows remain (a file shorter than about 371 days always ends here), nothing is scored. The app reports "insufficient data" and names the windows it dropped.
    - If the model does not beat the recency rule on top-20% hit rate in **every** window, the app says so and ranks by the recency rule instead, with the recency rule's own measured tier hit rates.
 
 ## What makes it different from a generic CRM or a chat-with-data tool

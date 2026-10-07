@@ -34,7 +34,8 @@ def screen_audit():
     n1 = len(r['not_scored'])
     st.write(f"1. Fewer than 2 orders: {'triggered' if n1 else 'not triggered'}"
              + (f', {n1:,} customers not scored.' if n1 else '.'))
-    st.write('2. Too little history: not triggered'
+    st.write('2. Too little history (each test window needs 50 or more customers with 2+ earlier orders, and at least '
+             '2 windows are needed): not triggered'
              + (f" (windows dropped: {plain('; '.join(a['skipped']))})." if a['skipped'] else '.'))
     st.write('3. The model must beat the simple rule in every window: '
              + ('triggered, using the simple rule' if r['ranker'] == 'recency' else 'not triggered')

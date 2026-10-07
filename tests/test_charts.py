@@ -36,7 +36,7 @@ def test_radar_radius_and_sector():
 def test_takeaways_follow_the_numbers():
     assert radar_takeaway({'due': 26, 'overdue': 124, 'lapsed': 15, 'not_due': 63}, 4).startswith(
         '26 customers are due now and 124 are slipping')
-    w = pd.DataFrame({'origin': [T('2024-11-05'), T('2024-08-06'), T('2024-05-07')],
+    w = pd.DataFrame({'origin': [T('2024-11-05'), T('2024-08-06'), T('2024-05-07')], 'n': [50, 35, 150],
                       'top20_model': [0.9, 0.857, 0.967], 'top20_recency': [0.8, 0.857, 0.967],
                       'base_rate': [0.5, 0.56, 0.67]})
     assert window_takeaway(w, 'recency') == ('The model and the simple rule tied in 2 of 3 windows, and the model '
@@ -51,19 +51,27 @@ def test_takeaways_follow_the_numbers():
     holdout_chart(h).to_dict()
 
 
-def _bar_labels(chart):
-    """{(window index, method): label} as drawn on the chart."""
+def _bar_rows(chart):
+    """{(window index, method): data row} of the bar labels as drawn on the chart."""
     rows = [r for d in chart.to_dict()['datasets'].values() for r in d if 'label' in r]
-    return {(round(r['mid']), r['method']): r['label'] for r in rows}
+    return {(round(r['mid']), r['method']): r for r in rows}
+
+
+def _bar_labels(chart):
+    return {key: r['label'] for key, r in _bar_rows(chart).items()}
 
 
 def test_bar_labels_and_sentence_agree():
     o = [T('2024-11-05'), T('2024-08-06'), T('2024-05-07')]
-    tied = pd.DataFrame({'origin': o, 'top20_model': [37 / 41, 6 / 7, 29 / 30],      # the Indonesian sample
-                         'top20_recency': [33 / 41, 6 / 7, 29 / 30], 'base_rate': [0.5, 0.56, 0.67]})
-    labels = _bar_labels(window_bars(tied))
-    assert [labels[i, 'Model'] for i in range(3)] == ['90%', '86%', '97%']
-    assert [labels[i, 'Simple rule'] for i in range(3)] == ['80%', '86%', '97%']     # ties show the same label
+    tied = pd.DataFrame({'origin': o, 'n': [209, 179, 151],                          # the Indonesian sample
+                         'top20_model': [37 / 41, 30 / 35, 29 / 30], 'top20_recency': [33 / 41, 30 / 35, 29 / 30],
+                         'base_rate': [0.5, 0.56, 0.67]})
+    rows = _bar_rows(window_bars(tied))
+    shown = {key: r['text'].split('\n') for key, r in rows.items()}       # two lines: the rate over the count
+    assert [shown[i, 'Model'] for i in range(3)] == [['90%', '(37 of 41)'], ['86%', '(30 of 35)'],
+                                                     ['97%', '(29 of 30)']]
+    assert [shown[i, 'Simple rule'] for i in range(3)] == [['80%', '(33 of 41)'], ['86%', '(30 of 35)'],
+                                                           ['97%', '(29 of 30)']]     # ties: the same label
     assert window_takeaway(tied, 'recency').startswith('The model and the simple rule tied in 2 of 3 windows')
     # 0.8571 vs 0.8566 both round to 86%: not a tie in the logic, so the labels must differ (one decimal)
     close = tied.assign(top20_model=[0.8571, 0.865, 0.9], top20_recency=[0.8566, 0.774, 0.8])
@@ -78,3 +86,13 @@ def test_one_date_format_on_screen():
     assert day_label('2011-04-05') == '5 Apr 2011' and day_label(T('2011-04-15 10:00')) == '15 Apr 2011'
     assert show_dates('2024-08-06 (model 86%); invoice NT-101126 on 2024-12-26') == \
         '6 Aug 2024 (model 86%); invoice NT-101126 on 26 Dec 2024'
+
+
+def test_top20_size_is_the_cut_the_audit_uses():
+    import numpy as np
+    from app.charts import top20_size
+    from app.engine import top_k_hit
+    for n in (7, 35, 151, 179, 209):
+        y = np.zeros(n, dtype=int)
+        y[0] = 1                                    # one positive, ranked first: the audit's hit rate is 1 / k
+        assert round(1 / top_k_hit(y, -np.arange(n, dtype=float))) == top20_size(n)
