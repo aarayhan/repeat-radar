@@ -148,7 +148,7 @@ def window_bars(windows, height=260):
     color = alt.Color('method:N', scale=alt.Scale(domain=list(METHOD_COLORS), range=list(METHOD_COLORS.values())),
                       legend=alt.Legend(title=None, orient='top'))
     bars = alt.Chart(long).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-        alt.X('x:Q', scale=xs, axis=axis), x2='x2:Q', y=yv, color=color,
+        alt.X('x:Q', scale=xs, axis=axis), x2='x2:Q', y=yv, y2=alt.datum(0), color=color,
         tooltip=[alt.Tooltip('method:N', title='Ranking'), alt.Tooltip('label:N', title='Top 20%')])
     text = alt.Chart(long).mark_text(dy=-7, fontSize=11, color=INK).encode(   # labels rounded in Python, as in
         alt.X('mid:Q', scale=xs), yv, text='label:N')                          # window_takeaway
