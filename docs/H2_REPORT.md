@@ -598,6 +598,24 @@ ba6c31a00564 | lapsed | source llm | products ['12 pencils small tube posy', '36
    Hello again, we hope you're well. Just checking in to see if you're still using our 12 pencils small tube posy in your projects.
 ```
 
+**Human review of the 20 drafts above** (numbered 1 to 20 in the order listed):
+
+| Reviewer | Send as is | Small edit | Not sendable |
+|---|---|---|---|
+| Developer (not independent) | 20 | 0 | 0 |
+| Second review: AI assistant (not independent of the project) | 14 | 5 | 1 |
+| Independent rater outside the project | pending | pending | pending |
+
+- **Small edits in the second review:**
+  - #2 `4509fa4050ec` assumes the customer still uses the product;
+  - #4 `7c0d96c9b6dd` assumes use ("still enjoying");
+  - #6 `e454166ab41b` assumes how it is used ("useful addition to your inventory");
+  - #14 `0a5985ca8ccd` is clunky;
+  - #20 `ba6c31a00564` assumes use ("still using ... in your projects").
+- **Not sendable:** #19 `ba145ff78fbd` says "We've got some new styles if you're interested". No data supports it.
+- **The developer is not an independent rater.** Neither is the AI assistant: it helped build the project. The two ratings disagree on 6 of 20 drafts, so neither should be read as evidence of quality.
+- **#19 shows an invented claim the verifier does not catch.** It contains no number, date, unknown product or blocked phrase, so it passed every code check.
+
 ## 12. Pre-push checks (2026-10-06, local main)
 **Secret scan, full history.** gitleaks 8.30.1 (official release, checksum verified, run from a temporary folder), over all branches with `--log-opts=--all`:
 ```

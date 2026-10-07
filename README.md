@@ -95,7 +95,13 @@ Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (U
   - with a fixed verifier (phrase list, exact day counts) and a prompt that asks for the day count and a product, 50 of 50 new customers got a verified, specific draft on the first try;
   - the verifier caught 15 of 15 hand-written bad drafts.
 
-  The app now shows the LLM draft in English (labeled, with a template fallback); Indonesian drafts are still templates. The verifier cannot catch claims it has no rule for, so drafts must be read before sending. 10 drafts are waiting for a human check.
+  The app now shows the LLM draft in English (labeled, with a template fallback); Indonesian drafts are still templates. The verifier cannot catch claims it has no rule for, so drafts must be read before sending.
+- Human review of 20 run-3 drafts:
+  - the developer rated 20 of 20 sendable as is;
+  - a second review by an AI assistant rated 14 sendable, 5 needing small edits (assumptions about use, awkward wording) and 1 not sendable;
+  - an independent rating by someone outside the project is pending.
+
+  The developer is not an independent rater, and neither is the assistant. The draft rated not sendable claims "we've got some new styles" with no data behind it. That is an invented claim the verifier does not catch.
 - The LLM explanation on screen 2 has not been checked against a real model; without a key it uses a template.
 - In the middle tier, the simple recency rule finds more returning customers than the model (49% vs 43% on all customers). The model's advantage is in the top tier.
 - One dataset, B2B gift-ware, 2009-2011. The data ends in 2011, so there is no test on later time periods. The October 2011 window was seen while designing the method.
