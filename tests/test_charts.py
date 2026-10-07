@@ -49,3 +49,26 @@ def test_takeaways_follow_the_numbers():
     assert holdout_takeaway(h) == ('On customers the model never saw, its lead is clear in Oct 2011. In Apr 2011 '
                                    'the interval crosses zero, so that window is not conclusive.')
     holdout_chart(h).to_dict()
+
+
+def _bar_labels(chart):
+    """{(window index, method): label} as drawn on the chart."""
+    rows = [r for d in chart.to_dict()['datasets'].values() for r in d if 'label' in r]
+    return {(round(r['mid']), r['method']): r['label'] for r in rows}
+
+
+def test_bar_labels_and_sentence_agree():
+    o = [T('2024-11-05'), T('2024-08-06'), T('2024-05-07')]
+    tied = pd.DataFrame({'origin': o, 'top20_model': [37 / 41, 6 / 7, 29 / 30],      # the Indonesian sample
+                         'top20_recency': [33 / 41, 6 / 7, 29 / 30], 'base_rate': [0.5, 0.56, 0.67]})
+    labels = _bar_labels(window_bars(tied))
+    assert [labels[i, 'Model'] for i in range(3)] == ['90%', '86%', '97%']
+    assert [labels[i, 'Simple rule'] for i in range(3)] == ['80%', '86%', '97%']     # ties show the same label
+    assert window_takeaway(tied, 'recency').startswith('The model and the simple rule tied in 2 of 3 windows')
+    # 0.8571 vs 0.8566 both round to 86%: not a tie in the logic, so the labels must differ (one decimal)
+    close = tied.assign(top20_model=[0.8571, 0.865, 0.9], top20_recency=[0.8566, 0.774, 0.8])
+    labels = _bar_labels(window_bars(close))
+    assert labels[0, 'Model'] != labels[0, 'Simple rule']
+    gaps = [float(labels[i, 'Model'][:-1]) - float(labels[i, 'Simple rule'][:-1]) for i in range(3)]
+    text = window_takeaway(close, 'model')
+    assert f'by {round(min(gaps), 2):g} to {round(max(gaps), 2):g} points' in text, (labels, text)

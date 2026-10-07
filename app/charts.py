@@ -101,6 +101,16 @@ def window_label(origin):
     return pd.Timestamp(origin).strftime('%b %Y')
 
 
+def shown_percents(m, r):
+    """(model, simple rule, decimals): the two hit rates in percent, rounded the way the bars show them. Whole
+    percents, unless rounding would make different values look equal (or equal values look different)."""
+    for d in (0, 1, 2):
+        a, b = round(m * 100, d), round(r * 100, d)
+        if (a == b) == (m == r):
+            break
+    return a, b, d
+
+
 def window_bars(windows, height=260):
     """Grouped bars per test window: top-20% hit rate of the model and of the simple rule; base rate as a dashed
     line across the group. Drawn on a numeric x axis (window index) so the dashed line can span the group.
@@ -109,9 +119,11 @@ def window_bars(windows, height=260):
     labels = [window_label(o) for o in w['origin']]
     rows = []
     for i, r in w.iterrows():
-        rows.append({'method': 'Model', 'value': r['top20_model'], 'x': i - 0.41, 'x2': i - 0.02, 'mid': i - 0.215})
-        rows.append({'method': 'Simple rule', 'value': r['top20_recency'], 'x': i + 0.02, 'x2': i + 0.41,
-                     'mid': i + 0.215})
+        a, b, d = shown_percents(r['top20_model'], r['top20_recency'])
+        rows.append({'method': 'Model', 'value': r['top20_model'], 'label': f'{a:.{d}f}%', 'x': i - 0.41,
+                     'x2': i - 0.02, 'mid': i - 0.215})
+        rows.append({'method': 'Simple rule', 'value': r['top20_recency'], 'label': f'{b:.{d}f}%', 'x': i + 0.02,
+                     'x2': i + 0.41, 'mid': i + 0.215})
     long = pd.DataFrame(rows)
     base = pd.DataFrame({'x': [i - 0.47 for i in range(len(w))], 'x2': [i + 0.47 for i in range(len(w))],
                          'base_rate': w['base_rate'], 'window': labels})
@@ -124,9 +136,9 @@ def window_bars(windows, height=260):
                       legend=alt.Legend(title=None, orient='top'))
     bars = alt.Chart(long).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
         alt.X('x:Q', scale=xs, axis=axis), x2='x2:Q', y=yv, color=color,
-        tooltip=[alt.Tooltip('method:N', title='Ranking'), alt.Tooltip('value:Q', title='Top 20%', format='.0%')])
-    text = alt.Chart(long).mark_text(dy=-7, fontSize=11, color=INK).encode(
-        alt.X('mid:Q', scale=xs), yv, text=alt.Text('value:Q', format='.0%'))
+        tooltip=[alt.Tooltip('method:N', title='Ranking'), alt.Tooltip('label:N', title='Top 20%')])
+    text = alt.Chart(long).mark_text(dy=-7, fontSize=11, color=INK).encode(   # labels rounded in Python, as in
+        alt.X('mid:Q', scale=xs), yv, text='label:N')                          # window_takeaway
     rule = alt.Chart(base).mark_rule(color=INK, strokeWidth=2, strokeDash=[6, 4]).encode(
         alt.X('x:Q', scale=xs), x2='x2:Q', y='base_rate:Q',
         tooltip=[alt.Tooltip('window:N', title='Window'), alt.Tooltip('base_rate:Q', title='Base rate', format='.0%')])
@@ -134,12 +146,12 @@ def window_bars(windows, height=260):
 
 
 def window_takeaway(windows, ranker):
-    """The sentence under the window bars, from the real numbers."""
+    """The sentence under the window bars, from the real numbers, with the same rounding as the bar labels."""
     m, r = windows['top20_model'], windows['top20_recency']
     n, wins, ties, losses = len(windows), int((m > r).sum()), int((m == r).sum()), int((m < r).sum())
     if ranker == 'model':
-        gap = ((m - r) * 100).round().astype(int)
-        return (f'The model beat the simple rule in all {n} windows, by {gap.min()} to {gap.max()} points among '
+        gap = [round(a - b, d) for a, b, d in map(shown_percents, m, r)]
+        return (f'The model beat the simple rule in all {n} windows, by {min(gap):g} to {max(gap):g} points among '
                 'the top 20% of customers, so we use the model.')
     parts = []
     if ties:
