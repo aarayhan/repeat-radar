@@ -326,8 +326,8 @@ def test_no_key_message_and_trust_line_without_variable_names(monkeypatch):
     st.cache_data.clear()
     monkeypatch.setattr(llm_mod, 'client', _no_key)
     at = AppTest.from_file(APP, default_timeout=180).run()
-    assert ('**We do not just make predictions. We only make them when the data shows we can trust them.**'
-            in [m.value for m in at.markdown])
+    assert any('We do not just make predictions. We only make them when the data shows we can trust them.'
+               in m.value for m in at.markdown)                       # in the hero under the app name
     at.selectbox(key='sample_choice').set_value('E-commerce (synthetic)')
     at.button(key='use_sample').click().run()
     captions = [c.value for c in at.caption]
@@ -400,3 +400,13 @@ def test_audit_says_plainly_when_the_model_was_not_used(no_llm, sample, refused)
     assert ('so we use the simple rule.' in text) if refused else ('so we use the model.' in text)
     if refused:
         assert 'tied in 2 of 3 windows' in text                       # the takeaway is built from the numbers
+
+
+def test_try_the_demo_loads_the_indonesian_sample(no_llm):
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    assert any('class="rr-hero"' in m.value and 'Repeat Radar' in m.value for m in at.markdown)
+    at.button(key='try_demo').click().run()
+    assert not at.exception and not at.error
+    assert any('kasir_indonesia.csv' in i.value and SAMPLE_NOTE in i.value for i in at.info)
+    at.button(key='confirm').click().run()
+    assert any('Mapping confirmed' in s.value for s in at.success)

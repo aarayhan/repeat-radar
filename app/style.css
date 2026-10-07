@@ -23,7 +23,8 @@ h1, h2, h3, h4, .rr-brand {
 [data-testid="stMetricValue"] { font-stretch: 112%; font-weight: 700; color: var(--ink); font-size: 2rem; }
 
 /* Primary button: the one big action */
-[data-testid="stBaseButton-primary"] { border-radius: 10px; padding: 0.7rem 1.6rem; font-weight: 700; font-size: 1.05rem; }
+[data-testid="stBaseButton-primary"] { border-radius: 10px; min-height: 3.3rem; padding: 0 2.4rem; }
+[data-testid="stBaseButton-primary"] p { font-size: 1.15rem; font-weight: 700; }
 
 /* Hero with a radar sweep that runs once */
 .rr-hero { position: relative; overflow: hidden; border-radius: 18px; background: var(--ink); color: #fff;
@@ -31,7 +32,7 @@ h1, h2, h3, h4, .rr-brand {
 .rr-hero h1.rr-brand { color: #fff; font-size: 3rem; margin: 0 0 0.4rem; padding: 0; }
 .rr-hero .rr-trust { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.5rem; max-width: 40rem; }
 .rr-hero .rr-lead { opacity: 0.85; margin: 0; max-width: 40rem; }
-.rr-hero > div { position: relative; z-index: 1; }
+.rr-hero > div:not(.rr-sweep) { position: relative; z-index: 1; }
 .rr-sweep { position: absolute; right: -120px; top: -120px; width: 420px; height: 420px; border-radius: 50%;
   background: repeating-radial-gradient(circle, transparent 0 48px, rgba(255,255,255,.08) 49px 50px),
               conic-gradient(from 0deg, rgba(14,159,142,.55), rgba(14,159,142,0) 70deg, transparent 360deg);

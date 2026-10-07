@@ -45,6 +45,12 @@ INTENT_LABEL = {'not_due': 'Not due yet', 'due': 'Due: restock reminder', 'overd
                 'lapsed': 'Lapsed: re-introduce'}
 pct = '{:.0%}'.format
 CSS = (ROOT / 'app' / 'style.css').read_text(encoding='utf-8')
+HERO_HTML = ('<div class="rr-hero"><div class="rr-sweep" aria-hidden="true"></div><div>'
+             '<h1 class="rr-brand">Repeat Radar</h1>'
+             f'<p class="rr-trust">{TRUST_LINE}</p>'
+             '<p class="rr-lead">Upload a sales export and see which customers are likely to order again, '
+             "how often that list was right before, and a message checked against each customer's own orders."
+             '</p></div></div>')
 LEGEND_HTML = ('<div class="rr-legend">'
                '<p><b>Distance from the center</b>: days since the last order, divided by the customer\'s usual '
                'gap between orders. Further out means later than usual.</p>'
@@ -232,6 +238,12 @@ def cap_notice():
 
 # ---------- screen 1: upload and mapping ----------
 
+def load_sample(choice):
+    st.session_state['file'] = (SAMPLES[choice], (ROOT / 'app' / 'sample_data' / SAMPLES[choice]).read_bytes())
+    st.session_state['is_sample'] = True
+    st.session_state['upload_key'] = st.session_state.get('upload_key', 0) + 1  # the next run shows an empty uploader
+
+
 def current_file():
     """(name, bytes) of the chosen file, kept in session memory so it survives switching screens."""
     st.session_state.setdefault('upload_key', 0)
@@ -240,21 +252,22 @@ def current_file():
     if up is not None and st.session_state.get('file', (None,))[0] != up.name:
         st.session_state['file'] = (up.name, up.getvalue())
         st.session_state['is_sample'] = False
-    c1, c2 = st.columns([3, 1])
+    c1, c2 = st.columns([3, 1], vertical_alignment='bottom')
     choice = c1.selectbox('Or try a sample file', list(SAMPLES), key='sample_choice')
     if c2.button('Use sample data', key='use_sample'):
-        st.session_state['file'] = (SAMPLES[choice], (ROOT / 'app' / 'sample_data' / SAMPLES[choice]).read_bytes())
-        st.session_state['is_sample'] = True
-        st.session_state['upload_key'] += 1  # the next run shows an empty uploader
+        load_sample(choice)
     return st.session_state.get('file')
 
 
 def screen_upload():
-    st.markdown(f'**{TRUST_LINE}**')
-    st.header('1. Upload')
+    st.markdown(HERO_HTML, unsafe_allow_html=True)
+    if st.button('Try the demo', key='try_demo', type='primary'):
+        load_sample('Indonesian point of sale (synthetic)')
+    st.caption('The demo uses a synthetic sample from a made-up Indonesian shop.')
+    st.markdown('### Or start with your own sales export')
     f = current_file()
     if f is None:
-        st.info('Upload a file or pick a sample to begin.')
+        st.info('Try the demo above, or upload your sales export (CSV or XLSX) to begin.')
         return
     name, data = f
     key = hashlib.sha256(data).hexdigest()
@@ -273,13 +286,13 @@ def screen_upload():
     p, llm_off = proposal(key, raw)
     cap_notice()
     src = {'llm': 'the LLM', 'rules': 'the built-in rules', None: 'nobody (please map by hand)'}[p['source']]
-    st.subheader('Column mapping')
+    st.markdown('### Check that the columns match')
     st.write(f'Proposed by {src}.')
     if llm_off == 'no_key':
         st.caption(NO_AI_MESSAGE)
     elif llm_off is None and p['llm_error']:
         st.caption(f"LLM not used: {p['llm_error']}")
-    st.caption('If an LLM key is configured, the column names and 3 sample rows are sent to the LLM provider.')
+    st.caption('With AI suggestions on, the column names and 3 sample rows are sent to the AI provider.')
 
     start, choice = p['mapping'], 'default'
     if p['needs_choice']:   # LLM and rules disagree on a required field, or one leaves it empty: user must pick
@@ -314,7 +327,7 @@ def screen_upload():
         st.session_state['confirmed'] = (key, json.dumps(mapping))
     conf = st.session_state.get('confirmed')
     if not conf or conf[0] != key:
-        st.caption('Screens 2 and 3 unlock after the mapping is confirmed.')
+        st.caption('Steps 2 and 3 unlock after you confirm the column mapping.')
         return
     if conf[1] != json.dumps(mapping):
         st.warning('The mapping changed since it was confirmed. Confirm again to use the new one.')
@@ -326,7 +339,8 @@ def screen_upload():
         st.warning(w)
     inv = result['inv']
     st.success(f"Mapping confirmed. {len(inv):,} invoices from {inv['customer_id'].nunique():,} customers, "
-               f"{inv['date'].min():%Y-%m-%d} to {inv['date'].max():%Y-%m-%d}. Open screen 2 in the sidebar.")
+               f"{inv['date'].min():%Y-%m-%d} to {inv['date'].max():%Y-%m-%d}. Next: open step 2, Customers, "
+               'in the sidebar to see who to contact.')
     if result['audit']['status'] != 'ok':
         st.warning(f"Not scored: {result['audit']['reason']}")
 
