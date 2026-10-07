@@ -226,7 +226,7 @@ def test_evidence_page_without_upload(no_llm):
     holdout = at.dataframe[2].value
     assert list(holdout['Verdict']) == ['model better (interval above 0)', 'model better (interval above 0)',
                                         'not conclusive (interval includes 0)']
-    assert any('2011-04-15' in w.value and 'not conclusive' in w.value for w in at.warning)
+    assert any('15 Apr 2011' in w.value and 'not conclusive' in w.value for w in at.warning)
     assert any('CC BY 4.0' in c.value and 'archive.ics.uci.edu' in c.value for c in at.caption)
     assert any('build_evidence.py' in c.value for c in at.code)
 
@@ -416,6 +416,6 @@ def test_evidence_chart_takeaway_names_the_inconclusive_window(no_llm):
     at = AppTest.from_file(APP, default_timeout=180).run()
     _go(at, '4. Results on real shop data')
     text = ' '.join(m.value for m in at.markdown)
-    assert 'its lead is clear in Oct 2011 and Jul 2011' in text
-    assert 'In Apr 2011 the interval crosses zero, so that window is not conclusive.' in text
+    assert 'its lead is clear in 14 Oct 2011 and 15 Jul 2011' in text
+    assert 'In 15 Apr 2011 the interval crosses zero, so that window is not conclusive.' in text
     assert [e.label for e in at.expander][-1] == 'How this is calculated'

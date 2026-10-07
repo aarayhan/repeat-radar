@@ -18,8 +18,8 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # `streamlit run app/streamlit_app.py` puts app/ on the path, not the repo root
 from app.audit import compare_tiers, recommend, tier_track_record  # noqa: E402
-from app.charts import (holdout_chart, holdout_takeaway, radar_chart, radar_frame,  # noqa: E402
-                        radar_takeaway, window_bars, window_takeaway)
+from app.charts import (day_label, holdout_chart, holdout_takeaway, radar_chart, radar_frame,  # noqa: E402
+                        radar_takeaway, show_dates, window_bars, window_takeaway)
 from app.engine import clean  # noqa: E402
 from app.drafts import draft_facts, intents, llm_draft, typical_gap, usual_products  # noqa: E402
 from app.explain import customer_facts, llm_explanation, template_message  # noqa: E402
@@ -338,10 +338,10 @@ def screen_upload():
         st.warning(w)
     inv = result['inv']
     st.success(f"Mapping confirmed. {len(inv):,} invoices from {inv['customer_id'].nunique():,} customers, "
-               f"{inv['date'].min():%Y-%m-%d} to {inv['date'].max():%Y-%m-%d}. Next: open step 2, Customers, "
+               f"{day_label(inv['date'].min())} to {day_label(inv['date'].max())}. Next: open step 2, Customers, "
                'in the sidebar to see who to contact.')
     if result['audit']['status'] != 'ok':
-        st.warning(f"Not scored: {result['audit']['reason']}")
+        st.warning(f"Not scored: {show_dates(result['audit']['reason'])}")
 
 
 def mapping_confirmed():
@@ -363,14 +363,14 @@ def confirmed_result(next_step):
         st.error(f"File refused: {result['error']}")
         return None
     if result['audit']['status'] != 'ok':
-        st.warning(f"Not scored: {result['audit']['reason']}")
+        st.warning(f"Not scored: {show_dates(result['audit']['reason'])}")
         return None
     return result
 
 
 def plain(text):
     """Display wording only: the app calls the recency rule 'the simple rule'."""
-    return text.replace('recency rule', 'simple rule').replace(' vs recency ', ' vs simple rule ')
+    return show_dates(text.replace('recency rule', 'simple rule').replace(' vs recency ', ' vs simple rule '))
 
 
 def takeaway(text):
@@ -395,7 +395,7 @@ def screen_customers():
     cards[4].markdown(f'<p style="margin:.15rem 0 .35rem;color:#5C6B7A;font-size:.9rem">Ranked by</p>{badge}',
                       unsafe_allow_html=True)
     as_of = inv['date'].max() + pd.Timedelta(days=1)          # the same origin score_now uses for 'recency'
-    st.markdown(f'Counted as of {as_of.day} {as_of:%b %Y}, the day after the last order in your file.')
+    st.markdown(f'Counted as of {day_label(as_of)}, the day after the last order in your file.')
 
     ids = {str(c): c for c in s['customer_id']}
     event = st.altair_chart(radar_chart(radar_frame(s)), width='stretch', theme=None, key='radar',
@@ -430,7 +430,7 @@ def screen_customers():
     for tab, (intent, label) in zip(st.tabs([f'{label} ({counts.get(i, 0):,})' for i, label in GROUPS]), GROUPS):
         g = s[s['intent'] == intent]
         tab.dataframe(pd.DataFrame({'Customer': g['customer_id'].astype(str), 'Tier': g['tier'],
-                                    'Last order': g['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': g['n_orders'],
+                                    'Last order': g['last_order'].map(day_label), 'Orders': g['n_orders'],
                                     'Days since last order': g['recency'],
                                     'Next step': g['intent'].map(INTENT_LABEL)}),
                       hide_index=True, width='stretch')
@@ -446,7 +446,7 @@ def screen_customers():
     facts = customer_facts(orders, row['tier'], row['recency'])
     conf_key = st.session_state['confirmed'][0]
     text, source = explanation(conf_key, json.dumps(facts), f'explain:{cust}')
-    st.write(text)
+    st.write(show_dates(text))
     st.caption(f'Explanation source: {source}')
     lines = r.get('lines')
     products = usual_products(lines[lines['customer_id'] == cust]) if lines is not None else []
@@ -504,14 +504,14 @@ def screen_audit():
     st.write(f"1. Fewer than 2 orders: {'triggered' if n1 else 'not triggered'}"
              + (f', {n1:,} customers not scored.' if n1 else '.'))
     st.write('2. Too little history: not triggered'
-             + (f" (windows dropped: {'; '.join(a['skipped'])})." if a['skipped'] else '.'))
+             + (f" (windows dropped: {plain('; '.join(a['skipped']))})." if a['skipped'] else '.'))
     st.write('3. The model must beat the simple rule in every window: '
              + ('triggered, using the simple rule' if r['ranker'] == 'recency' else 'not triggered')
              + f" ({plain(a['ranker_reason'])}).")
 
     with st.expander('How this is calculated'):
         st.dataframe(pd.DataFrame({
-            'Test window starts': w['origin'].dt.strftime('%Y-%m-%d'), 'Customers': w['n'],
+            'Test window starts': w['origin'].map(day_label), 'Customers': w['n'],
             'Base rate': w['base_rate'].map(pct),
             'AUC model': w['auc_model'].round(3), 'AUC recency': w['auc_recency'].round(3),
             'Top-20% hit model': w['top20_model'].map(pct), 'Top-20% hit recency': w['top20_recency'].map(pct),
@@ -551,11 +551,11 @@ def screen_evidence():
                'not conclusive.')
     for r in h.itertuples():
         if r.ci_low <= 0 <= r.ci_high:
-            st.warning(f"{r.window}: the model's win is not conclusive (the interval includes zero).")
+            st.warning(f"{day_label(r.window)}: the model's win is not conclusive (the interval includes zero).")
 
     st.markdown('### The details')
     with st.expander('Backtest on all customers: 3 test windows'):
-        st.dataframe(pd.DataFrame({'Test window starts': b['window'], 'Customers': b['customers'],
+        st.dataframe(pd.DataFrame({'Test window starts': b['window'].map(day_label), 'Customers': b['customers'],
                                    'Base rate': b['base_rate'].map(pct1), 'AUC model': b['auc_model'],
                                    'AUC recency': b['auc_recency'], 'Top-20% hit model': b['top20_model'].map(pct1),
                                    'Top-20% hit recency': b['top20_recency'].map(pct1)}),
@@ -567,7 +567,7 @@ def screen_evidence():
                                    'Simple rule, pooled (min to max)': [fmt(r) for r in t['recency'].itertuples()]}),
                      hide_index=True, width='stretch')
     with st.expander('Locked holdout: 20% of customers, run once, with 95% bootstrap intervals'):
-        st.dataframe(pd.DataFrame({'Test window starts': h['window'], 'Customers': h['customers'],
+        st.dataframe(pd.DataFrame({'Test window starts': h['window'].map(day_label), 'Customers': h['customers'],
                                    'In top 20%': h['top20_customers'], 'Top-20% hit model': h['top20_model'].map(pct1),
                                    'Top-20% hit recency': h['top20_recency'].map(pct1),
                                    'Difference (points)': (h['diff'] * 100).round(1),
@@ -575,7 +575,7 @@ def screen_evidence():
                                                              for lo, hi in zip(h['ci_low'], h['ci_high'])],
                                    'Verdict': h['verdict']}), hide_index=True, width='stretch')
     with st.expander('How well the predicted chances matched (calibration)'):
-        st.dataframe(pd.DataFrame({'Test window starts': b['window'], 'ECE, all customers': b['ece'],
+        st.dataframe(pd.DataFrame({'Test window starts': b['window'].map(day_label), 'ECE, all customers': b['ece'],
                                    'Brier, all customers': b['brier'], 'ECE, holdout': h['ece']}),
                      hide_index=True, width='stretch')
         st.caption('The predicted chances drift in the most recent window, so the app shows tier hit rates '

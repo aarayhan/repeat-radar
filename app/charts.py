@@ -2,6 +2,7 @@
 this module only arranges and words it."""
 import hashlib
 import math
+import re
 
 import altair as alt
 import pandas as pd
@@ -15,6 +16,7 @@ R_CAP = 3.0                                    # days / usual gap is capped at 3
 R_LAPSED = (3.15, 3.55)                        # lapsed customers (over 365 days) sit in this outer band
 R_EDGE = 4.05
 FONT = 'Archivo'
+ISO_DATE = re.compile(r'(?<!\d)\d{4}-\d{2}-\d{2}(?!\d)')
 
 
 def _unit(value, salt):
@@ -40,7 +42,7 @@ def radar_frame(scored):
         deg = 120 * (SECTORS.index(c.tier) + 0.08 + 0.84 * _unit(c.customer_id, 'angle'))
         x, y = _xy(r, deg)
         rows.append({'x': x, 'y': y, 'customer': str(c.customer_id), 'tier': c.tier.capitalize(),
-                     'last_order': pd.Timestamp(c.last_order).strftime('%d %b %Y'),
+                     'last_order': day_label(c.last_order),
                      'usual_gap': f'{gap} days' if gap is not None else 'unknown',
                      'group': GROUP_LABEL[c.intent],
                      'reason': f'Last order {int(c.recency)} days ago; usual gap '
@@ -98,8 +100,18 @@ def radar_takeaway(counts, due_high):
             f'{wait} are not due yet. {due_high} of the {due} due customers are in the high tier.')
 
 
-def window_label(origin):
-    return pd.Timestamp(origin).strftime('%b %Y')
+def day_label(d):
+    """The one date format on screen: 15 Apr 2011."""
+    d = pd.Timestamp(d)
+    return f'{d.day} {d:%b %Y}'
+
+
+def show_dates(text):
+    """Display only: ISO dates inside a text (audit reasons, explanations) in the on-screen format."""
+    return ISO_DATE.sub(lambda m: day_label(m.group(0)), text)
+
+
+window_label = day_label
 
 
 def shown_percents(m, r):

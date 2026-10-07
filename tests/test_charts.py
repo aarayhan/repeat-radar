@@ -3,7 +3,7 @@ import math
 
 import pandas as pd
 
-from app.charts import (R_CAP, R_LAPSED, holdout_chart, holdout_takeaway, radar_chart, radar_frame, radar_takeaway,
+from app.charts import (R_CAP, R_LAPSED, day_label, show_dates, holdout_chart, holdout_takeaway, radar_chart, radar_frame, radar_takeaway,
                         window_bars, window_takeaway)
 
 T = pd.Timestamp
@@ -46,7 +46,7 @@ def test_takeaways_follow_the_numbers():
     window_bars(w).to_dict()
     h = pd.DataFrame({'window': ['2011-10-14', '2011-04-15'], 'diff': [0.229, 0.062], 'ci_low': [0.157, -0.023],
                       'ci_high': [0.314, 0.164]})
-    assert holdout_takeaway(h) == ('On customers the model never saw, its lead is clear in Oct 2011. In Apr 2011 '
+    assert holdout_takeaway(h) == ('On customers the model never saw, its lead is clear in 14 Oct 2011. In 15 Apr 2011 '
                                    'the interval crosses zero, so that window is not conclusive.')
     holdout_chart(h).to_dict()
 
@@ -72,3 +72,9 @@ def test_bar_labels_and_sentence_agree():
     gaps = [float(labels[i, 'Model'][:-1]) - float(labels[i, 'Simple rule'][:-1]) for i in range(3)]
     text = window_takeaway(close, 'model')
     assert f'by {round(min(gaps), 2):g} to {round(max(gaps), 2):g} points' in text, (labels, text)
+
+
+def test_one_date_format_on_screen():
+    assert day_label('2011-04-05') == '5 Apr 2011' and day_label(T('2011-04-15 10:00')) == '15 Apr 2011'
+    assert show_dates('2024-08-06 (model 86%); invoice NT-101126 on 2024-12-26') == \
+        '6 Aug 2024 (model 86%); invoice NT-101126 on 26 Dec 2024'
