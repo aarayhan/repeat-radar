@@ -52,15 +52,13 @@ HERO_HTML = ('<div class="rr-hero"><div class="rr-sweep" aria-hidden="true"></di
              "how often that list was right before, and a message checked against each customer's own orders."
              '</p></div></div>')
 LEGEND_HTML = ('<div class="rr-legend">'
-               '<p><b>Distance from the center</b>: days since the last order, divided by the customer\'s usual '
-               'gap between orders. Further out means later than usual.</p>'
-               '<p><span class="rr-dot" style="background:#9AA5B1"></span>Inside the first ring: not due yet</p>'
-               '<p><span class="rr-dot" style="background:#0E9F8E"></span>Between the rings: due now</p>'
-               '<p><span class="rr-dot" style="background:#D99A00"></span>Beyond the second ring: slipping</p>'
-               '<p><span class="rr-dot" style="background:#B54A3C"></span>Outer band: no order for over a year</p>'
-               '<p><b>Sectors</b>: tier from the ranking. High tier customers are the most likely to reorder.</p>'
-               '<p>The rings are simple rules, not validated. Hover a dot for details; click it to open the '
-               'customer below.</p></div>')
+               "<p><b>Distance</b>: days since the last order divided by the customer's usual gap. Rings at x0.8 "
+               'and x1.5; outer band: no order for over a year. The rings are simple rules, not validated.</p>'
+               '<p><b>Color</b>: ' + ''.join(f'<span class="rr-dot" style="background:{c}"></span>{t} &nbsp; '
+                                            for c, t in (('#0E9F8E', 'due now'), ('#D99A00', 'slipping'),
+                                                         ('#B54A3C', 'lapsed'), ('#9AA5B1', 'not due yet')))
+               + '</p><p><b>Sector</b>: tier from the ranking; high tier customers are the most likely to reorder. '
+               'Click a dot to open the customer below.</p></div>')
 
 
 # ---------- cached computation (keyed by the SHA-256 of the file content) ----------
@@ -399,11 +397,9 @@ def screen_customers():
     st.markdown(f'Counted as of {as_of.day} {as_of:%b %Y}, the day after the last order in your file.')
 
     ids = {str(c): c for c in s['customer_id']}
-    chart_col, legend_col = st.columns([3, 2])
-    with chart_col:
-        event = st.altair_chart(radar_chart(radar_frame(s)), width='content', theme=None, key='radar',
-                                on_select='rerun', selection_mode='pick')
-    legend_col.markdown(LEGEND_HTML, unsafe_allow_html=True)
+    event = st.altair_chart(radar_chart(radar_frame(s)), width='stretch', theme=None, key='radar',
+                            on_select='rerun', selection_mode='pick')
+    st.markdown(LEGEND_HTML, unsafe_allow_html=True)
     picked = (event.get('selection', {}).get('pick') or [{}])[0].get('customer') if event else None
     if picked in ids and picked != st.session_state.get('radar_last'):   # a click on the radar picks the customer
         st.session_state['radar_last'] = picked

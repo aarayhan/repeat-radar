@@ -61,12 +61,14 @@ def _guides():
     return rings, spokes, ring_text, sector_text
 
 
-def radar_chart(frame, size=360, selectable=True):
-    """Square radar: distance = days since last order / usual gap (capped at 3, lapsed in the outer band),
-    sector = tier, color = next step. Click selection named 'pick' on the customer field."""
+def radar_chart(frame, height=560, selectable=True):
+    """Radar as wide as its container: distance = days since last order / usual gap (capped at 3, lapsed in the
+    outer band), sector = tier, color = next step. The scale domains follow the chart's width and height, so the
+    rings stay round at any width. Click selection named 'pick' on the customer field."""
     lim = R_EDGE + 0.15
-    x = alt.X('x:Q', scale=alt.Scale(domain=[-lim, lim]), axis=None)
-    y = alt.Y('y:Q', scale=alt.Scale(domain=[-lim, lim]), axis=None)
+    wide, tall = f'{lim} * max(1, width / height)', f'{lim} * max(1, height / width)'
+    x = alt.X('x:Q', scale=alt.Scale(domain={'expr': f'[-{wide}, {wide}]'}), axis=None)
+    y = alt.Y('y:Q', scale=alt.Scale(domain={'expr': f'[-{tall}, {tall}]'}), axis=None)
     rings, spokes, ring_text, sector_text = _guides()
     groups = list(GROUP_LABEL.values())
     layers = [
@@ -74,19 +76,18 @@ def radar_chart(frame, size=360, selectable=True):
                                                                                           order='i:Q'),
         alt.Chart(spokes).mark_line(color=GRID, strokeWidth=1).encode(x, y, detail='spoke:N', order='i:Q'),
         alt.Chart(ring_text).mark_text(align='left', fontSize=10, color=MUTED).encode(x, y, text='text:N'),
-        alt.Chart(sector_text).mark_text(fontSize=12, fontWeight=700, color=INK).encode(x, y, text='text:N'),
+        alt.Chart(sector_text).mark_text(fontSize=14, fontWeight=700, color=INK).encode(x, y, text='text:N'),
     ]
-    points = alt.Chart(frame).mark_circle(size=64, opacity=0.9, stroke='white', strokeWidth=0.7).encode(
+    points = alt.Chart(frame).mark_circle(size=95, opacity=0.9, stroke='white', strokeWidth=0.7).encode(
         x, y,
         color=alt.Color('group:N', scale=alt.Scale(domain=groups, range=[COLORS[k] for k in GROUP_LABEL]),
-                        legend=alt.Legend(title=None, orient='bottom', direction='horizontal', columns=4,
-                                          labelFontSize=12, symbolSize=110)),
+                        legend=None),     # the legend is drawn under the chart by the app
         tooltip=[alt.Tooltip('customer:N', title='Customer'), alt.Tooltip('tier:N', title='Tier'),
                  alt.Tooltip('last_order:N', title='Last order'), alt.Tooltip('usual_gap:N', title='Usual gap'),
                  alt.Tooltip('reason:N', title='Reason'), alt.Tooltip('group:N', title='Next step')])
     if selectable:
         points = points.add_params(alt.selection_point(name='pick', fields=['customer'], on='click'))
-    return (alt.layer(*layers, points).properties(width=size, height=size)
+    return (alt.layer(*layers, points).properties(width='container', height=height)
             .configure_view(stroke=None).configure(font=FONT, background='transparent'))
 
 
