@@ -3,8 +3,8 @@ import math
 
 import pandas as pd
 
-from app.charts import (R_CAP, R_LAPSED, day_label, show_dates, holdout_chart, holdout_takeaway, radar_chart, radar_frame, radar_takeaway,
-                        window_bars, window_takeaway)
+from app.charts import (R_CAP, R_LAPSED, day_label, holdout_chart, holdout_takeaway, radar_chart, radar_frame,
+                        radar_takeaway, show_dates, window_bars, window_takeaway)
 
 T = pd.Timestamp
 

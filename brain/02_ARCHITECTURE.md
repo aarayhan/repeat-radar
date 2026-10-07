@@ -50,7 +50,7 @@ No real LLM call has been made yet (no key). Without a key the app runs fully on
 - `template_explanation` and `template_message` produce fixed text (en/id). `llm_explanation` lets the LLM word the facts, then checks the citations.
 - Each text function returns `(text, source)` with source `llm` or `template`.
 
-## UI (`app/streamlit_app.py`): three screens in order
+## UI (`app/streamlit_app.py`, one module per screen in `app/screens/`): three screens in order
 Navigation is by sidebar and `session_state`. Screens 2 and 3 stay locked until the mapping is confirmed. Files stay in memory only (never written to disk). Heavy steps are cached with `st.cache_data`, keyed by the SHA-256 of the file content.
 1. **Upload.** CSV/XLSX upload, or a synthetic sample file. The proposed mapping and its source (LLM or rules) are shown, with a selectbox per field to correct it. The mapping is re-validated on every change. Date warnings and refusals are shown as messages, never as a traceback.
 2. **Customers.**
