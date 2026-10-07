@@ -1,0 +1,62 @@
+/* Repeat Radar presentation layer. Small on purpose; targets Streamlit data-testid selectors. */
+@import url('https://fonts.googleapis.com/css2?family=Archivo:wdth,wght@62..125,400;62..125,700&display=swap');
+
+:root {
+  --bg: #F2F5F8; --ink: #14213D; --muted: #5C6B7A; --line: #E1E7EE; --card: #FFFFFF;
+  --due: #0E9F8E; --slip: #D99A00; --lapsed: #B54A3C; --wait: #9AA5B1;
+}
+
+html, body, [data-testid="stApp"], [data-testid="stMarkdownContainer"], [data-testid="stWidgetLabel"],
+button, input, textarea, select { font-family: 'Archivo', sans-serif; }
+[data-testid="stApp"] { background: var(--bg); color: var(--ink); }
+h1, h2, h3, h4, .rr-brand {
+  font-family: 'Archivo', sans-serif !important; font-stretch: 125%; font-weight: 700 !important;
+  color: var(--ink); letter-spacing: -0.01em;
+}
+[data-testid="stCaptionContainer"] { color: var(--muted); }
+
+/* Cards */
+[data-testid="stMetric"], [data-testid="stExpander"] details {
+  background: var(--card); border: 1px solid var(--line); border-radius: 12px;
+}
+[data-testid="stMetric"] { padding: 12px 14px; }
+[data-testid="stMetricValue"] { font-stretch: 112%; font-weight: 700; color: var(--ink); font-size: 2rem; }
+
+/* Primary button: the one big action */
+[data-testid="stBaseButton-primary"] { border-radius: 10px; padding: 0.7rem 1.6rem; font-weight: 700; font-size: 1.05rem; }
+
+/* Hero with a radar sweep that runs once */
+.rr-hero { position: relative; overflow: hidden; border-radius: 18px; background: var(--ink); color: #fff;
+  padding: 2.2rem 2rem 2rem; margin-bottom: 0.8rem; }
+.rr-hero h1.rr-brand { color: #fff; font-size: 3rem; margin: 0 0 0.4rem; padding: 0; }
+.rr-hero .rr-trust { font-size: 1.15rem; font-weight: 700; margin: 0 0 0.5rem; max-width: 40rem; }
+.rr-hero .rr-lead { opacity: 0.85; margin: 0; max-width: 40rem; }
+.rr-hero > div { position: relative; z-index: 1; }
+.rr-sweep { position: absolute; right: -120px; top: -120px; width: 420px; height: 420px; border-radius: 50%;
+  background: repeating-radial-gradient(circle, transparent 0 48px, rgba(255,255,255,.08) 49px 50px),
+              conic-gradient(from 0deg, rgba(14,159,142,.55), rgba(14,159,142,0) 70deg, transparent 360deg);
+  animation: rr-sweep 2.6s ease-out 1 forwards; }
+@keyframes rr-sweep { from { transform: rotate(-200deg); opacity: 0; } 30% { opacity: 1; } to { transform: rotate(0deg); opacity: 1; } }
+@media (prefers-reduced-motion: reduce) { .rr-sweep { animation: none; } }
+
+/* Badges, legend, panels */
+.rr-badge { display: inline-block; padding: 0.35rem 0.75rem; border-radius: 999px; font-weight: 700;
+  background: var(--card); border: 1px solid var(--line); color: var(--ink); }
+.rr-badge.rule { border-color: var(--slip); }
+.rr-dot { display: inline-block; width: 0.75rem; height: 0.75rem; border-radius: 50%; margin-right: 0.4rem;
+  vertical-align: -1px; }
+.rr-legend p { margin: 0 0 0.45rem; }
+.rr-panel { background: var(--card); border: 1px solid var(--line); border-left: 6px solid var(--slip);
+  border-radius: 12px; padding: 1rem 1.2rem; margin: 0.4rem 0 1rem; }
+.rr-panel h3 { margin: 0 0 0.3rem; font-size: 1.25rem; }
+.rr-panel p { margin: 0; font-size: 1.05rem; }
+.rr-takeaway { font-size: 1.02rem; font-weight: 700; color: var(--ink); margin: 0.2rem 0 1rem; }
+
+@media (max-width: 640px) {
+  [data-testid="stHorizontalBlock"]:has([data-testid="stMetric"]) { flex-flow: row wrap; gap: 0.6rem; }
+  [data-testid="stColumn"]:has([data-testid="stMetric"]) { flex: 1 1 calc(50% - 0.6rem) !important;
+    min-width: calc(50% - 0.6rem) !important; }
+  .rr-hero { padding: 1.4rem 1.2rem; }
+  .rr-hero h1.rr-brand { font-size: 2.1rem; }
+  .rr-sweep { width: 280px; height: 280px; right: -110px; top: -110px; }
+}

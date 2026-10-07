@@ -51,7 +51,10 @@ def test_each_sample_end_to_end(no_llm, sample):
     assert not at.exception and not at.error
     assert any(m.value.startswith('Counted as of ') and 'the day after the last order in your file' in m.value
                for m in at.markdown)
-    assert len(at.metric) == 3                                     # one measured hit rate per tier
+    labels = [m.label for m in at.metric]
+    assert [l for l in labels if l.endswith(' tier')] == ['High tier', 'Medium tier', 'Low tier']  # hit rate per tier
+    assert [l for l in labels if not l.endswith(' tier')] == ['Due now', 'Slipping (overdue)', 'Lapsed',
+                                                              'Not due yet']                 # group counts
     table = at.dataframe[0].value
     assert list(table.columns) == ['Customer', 'Tier', 'Last order', 'Orders', 'Days since last order',
                                    'Next step']                    # no probability column
@@ -201,14 +204,16 @@ def test_contact_list_grouped_by_intent_with_counts_and_sample_note(no_llm):
     assert any(SAMPLE_NOTE in i.value for i in at.info)                       # screen 1
     _go(at, '2. Customers')
     assert SAMPLE_NOTE in [i.value for i in at.info]                          # screen 2
-    heads = [m.value for m in at.markdown if m.value.startswith('#### ')]
-    assert [h.rsplit(' (', 1)[0][5:] for h in heads] == ['Due now', 'Slipping (overdue)', 'Lapsed', 'Not due yet']
+    heads = [t.label for t in at.tabs]                                        # one tab per group, in order
+    assert [h.rsplit(' (', 1)[0] for h in heads] == ['Due now', 'Slipping (overdue)', 'Lapsed', 'Not due yet']
     groups = [d.value for d in at.dataframe if 'Next step' in d.value.columns]
+    assert len(groups) == 4
     order = {'high': 0, 'medium': 1, 'low': 2}
+    cards = {m.label: m.value for m in at.metric}
     for h, g in zip(heads, groups):
         assert h.endswith(f'({len(g):,})')                                    # count per group
+        assert cards[h.rsplit(' (', 1)[0]] == f'{len(g):,}'                   # the count card says the same
         assert list(g['Tier'].map(order)) == sorted(g['Tier'].map(order))     # tier order inside the group
-    assert any(m.value.startswith('**Due now**:') for m in at.markdown)
     _go(at, '3. Audit')
     assert SAMPLE_NOTE in [i.value for i in at.info]                          # screen 3
 

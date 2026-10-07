@@ -4,6 +4,7 @@ Files are processed in memory only (never written to disk, never logged). All nu
 """
 import datetime
 import hashlib
+import html
 import io
 import json
 import os
@@ -17,8 +18,9 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # `streamlit run app/streamlit_app.py` puts app/ on the path, not the repo root
 from app.audit import compare_tiers, recommend, tier_track_record  # noqa: E402
+from app.charts import radar_chart, radar_frame, radar_takeaway  # noqa: E402
 from app.engine import clean  # noqa: E402
-from app.drafts import draft_facts, intents, llm_draft, usual_products  # noqa: E402
+from app.drafts import draft_facts, intents, llm_draft, typical_gap, usual_products  # noqa: E402
 from app.explain import customer_facts, llm_explanation, template_message  # noqa: E402
 from app.llm import OPTIONAL, REQUIRED, LLMUnavailable, client, validate_mapping  # noqa: E402
 from app.mapping import check_values, propose_mapping  # noqa: E402
@@ -41,6 +43,17 @@ SECRET_KEYS = ('FEATHERLESS_API_KEY', 'OPENAI_API_KEY', 'OPENROUTER_API_KEY', 'L
 INTENT_LABEL = {'not_due': 'Not due yet', 'due': 'Due: restock reminder', 'overdue': 'Overdue: check in',
                 'lapsed': 'Lapsed: re-introduce'}
 pct = '{:.0%}'.format
+CSS = (ROOT / 'app' / 'style.css').read_text(encoding='utf-8')
+LEGEND_HTML = ('<div class="rr-legend">'
+               '<p><b>Distance from the center</b>: days since the last order, divided by the customer\'s usual '
+               'gap between orders. Further out means later than usual.</p>'
+               '<p><span class="rr-dot" style="background:#9AA5B1"></span>Inside the first ring: not due yet</p>'
+               '<p><span class="rr-dot" style="background:#0E9F8E"></span>Between the rings: due now</p>'
+               '<p><span class="rr-dot" style="background:#D99A00"></span>Beyond the second ring: slipping</p>'
+               '<p><span class="rr-dot" style="background:#B54A3C"></span>Outer band: no order for over a year</p>'
+               '<p><b>Sectors</b>: tier from the ranking. High tier customers are the most likely to reorder.</p>'
+               '<p>The rings are simple rules, not validated. Hover a dot for details; click it to open the '
+               'customer below.</p></div>')
 
 
 # ---------- cached computation (keyed by the SHA-256 of the file content) ----------
@@ -93,7 +106,9 @@ def analyse(key, mapping_json, _raw):
     out = {'inv': inv, 'warnings': inv.attrs.get('warnings', []), **recommend(inv)}
     if out['audit']['status'] == 'ok':
         out['records'] = {r: tier_track_record(out['audit'], r) for r in ('model', 'recency')}
-        out['scored'] = out['scored'].assign(intent=intents(inv, out['scored']))
+        gaps = inv.groupby('customer_id')['date'].apply(typical_gap)     # usual gap, shown on the radar
+        out['scored'] = out['scored'].assign(intent=intents(inv, out['scored']),
+                                             gap=out['scored']['customer_id'].map(gaps))
     m = json.loads(mapping_json)
     if m.get('product'):   # products are only used for the facts of a draft
         lines = pd.DataFrame({'customer_id': _raw[m['customer_id']], 'invoice_id': _raw[m['invoice_id']],
@@ -315,12 +330,17 @@ def screen_upload():
         st.warning(f"Not scored: {result['audit']['reason']}")
 
 
-def confirmed_result():
-    """Result for the confirmed mapping of the current file, or None (screen locked or refused)."""
+def mapping_confirmed():
     f, conf = st.session_state.get('file'), st.session_state.get('confirmed')
-    if not f or not conf or conf[0] != hashlib.sha256(f[1]).hexdigest():
-        st.info('Locked. Upload a file and confirm the column mapping on screen 1 first.')
+    return bool(f and conf and conf[0] == hashlib.sha256(f[1]).hexdigest())
+
+
+def confirmed_result(next_step):
+    """Result for the confirmed mapping of the current file, or None (screen locked or refused)."""
+    if not mapping_confirmed():
+        st.info(f'Locked: confirm the column mapping on step 1 to {next_step}.')
         return None
+    f, conf = st.session_state['file'], st.session_state['confirmed']
     if st.session_state.get('is_sample'):
         st.info(SAMPLE_NOTE)
     raw, _ = read_table(conf[0], f[0], f[1])
@@ -334,49 +354,75 @@ def confirmed_result():
     return result
 
 
+def takeaway(text):
+    st.markdown(f'<p class="rr-takeaway">{html.escape(text)}</p>', unsafe_allow_html=True)
+
+
 # ---------- screen 2: customers ----------
 
 def screen_customers():
-    st.header('2. Customers')
-    r = confirmed_result()
+    st.markdown('## Who to contact this week')
+    r = confirmed_result('see your customers')
     if r is None:
         return
-    a = r['audit']
-    if r['ranker'] == 'model':
-        st.write(f"**Method: model** (logistic regression on order history). Why: {a['ranker_reason']}.")
-    else:
-        st.write(f"**Method: recency rule** (most recent buyers first). Why: {a['ranker_reason']}.")
-
-    rec = r['track_record']
-    lo, hi = rec.attrs['base_rate']
-    st.write(f"Measured on {int(rec['windows'].iloc[0])} past test windows: share of customers in each tier who "
-             f"ordered again within 8 weeks (all scored customers: {pct(lo)} to {pct(hi)}).")
-    for col, (tier, row) in zip(st.columns(3), rec.iterrows()):
-        col.metric(f'{tier.capitalize()} tier', f"{pct(row['min'])} to {pct(row['max'])}",
-                   help=f"Pooled over the windows: {pct(row['pooled'])}")
-    st.caption('These are measured hit rates of each tier in the past, not a probability for any one customer.')
-
-    inv, s = r['inv'], r['scored']
-    as_of = inv['date'].max() + pd.Timedelta(days=1)          # the same origin score_now uses for 'recency'
-    st.write(f'Counted as of {as_of.day} {as_of:%b %Y}, the day after the last order in your file.')
-    s = s.assign(_tier=s['tier'].map(TIER_ORDER)).sort_values(['_tier', 'rank'])   # inside a group: tier, then rank
+    a, rec, inv = r['audit'], r['track_record'], r['inv']
+    s = r['scored'].assign(_tier=r['scored']['tier'].map(TIER_ORDER)).sort_values(['_tier', 'rank'])
     counts = s['intent'].value_counts()
-    st.write(' | '.join(f'**{label}**: {counts.get(i, 0):,}' for i, label in GROUPS))
+    cards = st.columns(5)
+    for col, (intent, label) in zip(cards, GROUPS):
+        col.metric(label, f'{counts.get(intent, 0):,}')
+    badge = ('<span class="rr-badge">The model</span>' if r['ranker'] == 'model'
+             else '<span class="rr-badge rule">The simple rule</span>')
+    cards[4].markdown(f'<p style="margin:.15rem 0 .35rem;color:#5C6B7A;font-size:.9rem">Ranked by</p>{badge}',
+                      unsafe_allow_html=True)
+    as_of = inv['date'].max() + pd.Timedelta(days=1)          # the same origin score_now uses for 'recency'
+    st.markdown(f'Counted as of {as_of.day} {as_of:%b %Y}, the day after the last order in your file.')
+
+    ids = {str(c): c for c in s['customer_id']}
+    chart_col, legend_col = st.columns([3, 2])
+    with chart_col:
+        event = st.altair_chart(radar_chart(radar_frame(s)), width='content', theme=None, key='radar',
+                                on_select='rerun', selection_mode='pick')
+    legend_col.markdown(LEGEND_HTML, unsafe_allow_html=True)
+    picked = (event.get('selection', {}).get('pick') or [{}])[0].get('customer') if event else None
+    if picked in ids and picked != st.session_state.get('radar_last'):   # a click on the radar picks the customer
+        st.session_state['radar_last'] = picked
+        st.session_state['customer'] = ids[picked]
+    takeaway(radar_takeaway(counts.to_dict(), int(((s['intent'] == 'due') & (s['tier'] == 'high')).sum())))
+
+    st.markdown('### How often each tier was right before')
+    lo, hi = rec.attrs['base_rate']
+    for col, (tier, row) in zip(st.columns(3), rec.iterrows()):
+        col.metric(f'{tier.capitalize()} tier', f"{pct(row['min'])[:-1]}–{pct(row['max'])}",
+                   help=f"Pooled over the windows: {pct(row['pooled'])}")
+    st.caption(f"Share who ordered again within 8 weeks, in {int(rec['windows'].iloc[0])} past test windows "
+               f'(all customers: {pct(lo)} to {pct(hi)}). Measured hit rates, not a probability for any one customer.')
+    with st.expander('How this is calculated'):
+        st.markdown(
+            f"- **Ranking:** {'a model trained on earlier order history' if r['ranker'] == 'model' else 'most recent buyers first (the simple rule)'}. "
+            f"Why: {a['ranker_reason']}.\n"
+            '- **Tiers:** high = top 20% of the ranking, medium = next 30%, low = the rest.\n'
+            "- **Next step:** days since the last order compared with the customer's usual gap. Not due below 0.8 x "
+            'the gap, due from 0.8 to 1.5 x, slipping above 1.5 x, lapsed after 365 days. These are simple rules, '
+            'not validated.\n'
+            '- **Radar:** distance = days since the last order divided by the usual gap, capped at 3; lapsed '
+            'customers sit in the outer band. The angle inside a sector only spreads the dots out.')
+
+    st.markdown('### Customers by next step')
     order = []
-    for intent, label in GROUPS:
+    for tab, (intent, label) in zip(st.tabs([f'{label} ({counts.get(i, 0):,})' for i, label in GROUPS]), GROUPS):
         g = s[s['intent'] == intent]
-        st.markdown(f'#### {label} ({len(g):,})')
-        st.dataframe(pd.DataFrame({'Customer': g['customer_id'].astype(str), 'Tier': g['tier'],
-                                   'Last order': g['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': g['n_orders'],
-                                   'Days since last order': g['recency'],
-                                   'Next step': g['intent'].map(INTENT_LABEL)}),
-                     hide_index=True, width='stretch')
+        tab.dataframe(pd.DataFrame({'Customer': g['customer_id'].astype(str), 'Tier': g['tier'],
+                                    'Last order': g['last_order'].dt.strftime('%Y-%m-%d'), 'Orders': g['n_orders'],
+                                    'Days since last order': g['recency'],
+                                    'Next step': g['intent'].map(INTENT_LABEL)}),
+                      hide_index=True, width='stretch')
         order += list(g['customer_id'])
     for reason, n in r['not_scored'].groupby('reason').size().items():
         st.write(f'**{n:,} customers not scored**: {reason}.')
 
-    st.subheader('Why this customer, and a draft message')
-    cust = st.selectbox('Customer', order, format_func=str, key='customer')
+    st.markdown('### Why this customer, and what to send')
+    cust = st.selectbox('Customer (or click a dot on the radar)', order, format_func=str, key='customer')
     lang = st.radio('Message language', ['English', 'Indonesian'], horizontal=True, key='msg_lang')
     row = s[s['customer_id'] == cust].iloc[0]
     orders = inv[inv['customer_id'] == cust]
@@ -401,7 +447,8 @@ def screen_customers():
         msg, msg_source = d['text'], d['source']
     else:
         msg, msg_source = template_message(facts, 'id')
-    st.text_area('Draft message', msg, key=f'msg_{cust}_{lang}')
+    st.markdown('**Draft message** (copy it, then edit before sending)')
+    st.code(msg, language=None, wrap_lines=True)
     st.caption(f'Message source: {msg_source}')
     cap_notice()
     if msg_source != 'template':
@@ -414,7 +461,7 @@ def screen_customers():
 
 def screen_audit():
     st.header('3. Audit')
-    r = confirmed_result()
+    r = confirmed_result('see how often this was right')
     if r is None:
         return
     a, w = r['audit'], r['audit']['windows']
@@ -522,15 +569,20 @@ def screen_evidence():
 def main():
     st.set_page_config(page_title='Repeat Radar', layout='wide')
     secrets_to_env()
-    st.title('Repeat Radar')
-    st.caption('Which customers are likely to reorder within 8 weeks, and how often that ranking was right on your '
-               'own past data. ForgeHacks 2026, AI + Business.')
-    screen = st.sidebar.radio('Step', SCREENS, key='screen')
+    st.markdown(f'<style>{CSS}</style>', unsafe_allow_html=True)
+    ready = mapping_confirmed()
+    st.sidebar.markdown('<p class="rr-brand" style="font-size:1.5rem;margin:0">Repeat Radar</p>',
+                        unsafe_allow_html=True)
+    st.sidebar.caption('Who is likely to order again within 8 weeks, and how often that was right before.')
+    status = {SCREENS[0]: 'start here' if not ready else 'done', SCREENS[1]: 'ready' if ready else 'locked',
+              SCREENS[2]: 'ready' if ready else 'locked', SCREENS[3]: 'always open'}
+    screen = st.sidebar.radio('Steps', SCREENS, key='screen', format_func=lambda x: f'{x} ({status[x]})')
+    st.sidebar.caption(f'You are on step {SCREENS.index(screen) + 1} of {len(SCREENS)}.'
+                       + ('' if ready else ' Steps 2 and 3 unlock after you confirm the column mapping.'))
     try:
         {SCREENS[0]: screen_upload, SCREENS[1]: screen_customers, SCREENS[2]: screen_audit,
          SCREENS[3]: screen_evidence}[screen]()
     except Exception as e:  # never show a traceback
         st.error(f'Something went wrong: {type(e).__name__}: {e}')
-
 
 main()
