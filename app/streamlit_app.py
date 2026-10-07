@@ -250,10 +250,11 @@ def current_file():
     if up is not None and st.session_state.get('file', (None,))[0] != up.name:
         st.session_state['file'] = (up.name, up.getvalue())
         st.session_state['is_sample'] = False
-    c1, c2 = st.columns([3, 1], vertical_alignment='bottom')
-    choice = c1.selectbox('Or try a sample file', list(SAMPLES), key='sample_choice')
-    if c2.button('Use sample data', key='use_sample'):
-        load_sample(choice)
+    with st.expander('Other samples'):
+        c1, c2 = st.columns([3, 1], vertical_alignment='bottom')
+        choice = c1.selectbox('Sample file (synthetic)', list(SAMPLES), key='sample_choice')
+        if c2.button('Use sample data', key='use_sample'):
+            load_sample(choice)
     return st.session_state.get('file')
 
 
