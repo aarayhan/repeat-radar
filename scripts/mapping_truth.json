@@ -14,5 +14,10 @@
     "file": "data/variants/variant_b_english.csv",
     "customer_id": "Customer Account", "invoice_id": "Order No", "date": "Order Date", "quantity": "Qty",
     "price": "Unit Price", "country": "Country", "product": ["Product Name", "SKU"], "line_total": null
+  },
+  "messy_export": {
+    "file": "app/sample_data/messy_export.csv",
+    "customer_id": "Pembeli", "invoice_id": "No. Struk", "date": "Waktu Transaksi", "quantity": "Banyaknya",
+    "price": "Harga/Pcs", "country": null, "product": ["Barang", "Kode Barang"], "line_total": null
   }
 }

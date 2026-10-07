@@ -25,7 +25,7 @@ On a locked holdout (20% of customers the model never saw, run once), the model'
   - For exact versions, install from `requirements-lock.txt`, a full `pip freeze` (60 packages) of the venv used for the holdout and evidence runs. It is for local reproduction only; the deploy uses `requirements.txt`.
   - The lock file was frozen on Windows and may include Windows-only packages. Checked: no pywin32. colorama and tzdata are there only because pytest and pandas need them on Windows; both also install elsewhere.
   - The app's **Results on real shop data** page shows the same tables.
-- **The deployed app runs on two synthetic sample files.** They contain made-up customers (`scripts/make_sample_data.py`, seed 42), or your own upload. Results on the samples show how the app works; they are not evidence.
+- **The deployed app runs on three synthetic sample files** (the third, a messy export, has column names the built-in rules do not know). They contain made-up customers (`scripts/make_sample_data.py`, seed 42), or your own upload. Results on the samples show how the app works; they are not evidence.
 - **The synthetic samples make the model look much better than UCI does, in absolute terms.**
   - Top-20% hit rates are 86-97% on the samples vs 71-80% on UCI, and base rates are 45-67% vs 31-43%. The made-up customers buy at steady rates with no seasonality, so they are easier to predict.
   - The model's lead over the recency rule is not bigger on the samples. On the Indonesian sample the model only ties the rule in 2 of 3 windows, so the app uses the rule.
@@ -42,7 +42,7 @@ Small B2B sellers keep sales history in exports and spreadsheets, but rarely see
 ## What it does
 
 1. **Upload** a messy sales export (any column names). An LLM and built-in rules both propose a column mapping; code checks it (values, and one customer and one date per invoice). If they disagree, the app shows both and you pick. You always confirm.
-2. **Contact list**: customers ranked and grouped into high, medium and low tiers. Each tier shows how often it was right in past test windows on your own data, not a probability. Each customer gets a short reason from their own orders and a draft follow-up message checked by code.
+2. **Contact list**: customers ranked and grouped into high, medium and low tiers. Each tier shows how often it was right in past test windows on your own data, not a probability. Each customer gets a short reason from their own orders (when the AI writes it, code checks only that every invoice number it cites is the customer's; dates and counts in it are not checked) and a draft follow-up message checked by code.
 3. **Audit**: the model is tested on your own history against the base rate and a simple recency rule. Customers with too little history are not scored, and the app says why.
 
 If the model does not beat the simple rule on your data, the app says so.

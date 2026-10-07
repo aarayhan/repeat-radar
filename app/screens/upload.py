@@ -11,7 +11,8 @@ from app.mapping import check_values
 from app.screens.common import ROOT, SAMPLE_NOTE, analyse, cap_notice, proposal, read_table
 
 SAMPLES = {'Indonesian point of sale (synthetic)': 'kasir_indonesia.csv',
-           'E-commerce (synthetic)': 'ecommerce.csv'}
+           'E-commerce (synthetic)': 'ecommerce.csv',
+           'Messy export (synthetic)': 'messy_export.csv'}
 TRUST_LINE = 'We do not just make predictions. We only make them when the data shows we can trust them.'
 NO_AI_MESSAGE = 'AI suggestions are off right now, so the built-in rules were used.'
 NONE = '(none)'

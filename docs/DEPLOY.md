@@ -4,7 +4,7 @@ These steps are for the owner. Nothing here has been run yet: no push, no deploy
 
 ## What gets deployed
 - **App:** `app/streamlit_app.py`. Dependencies are pinned in `requirements.txt`; it was built and tested on Python 3.13.
-- **Demo data:** the two synthetic sample files in `app/sample_data/`, made-up customers and committed (about 0.7 MB).
+- **Demo data:** the three synthetic sample files in `app/sample_data/`, made-up customers and committed (about 1.2 MB).
 - **Not deployed:**
   - The UCI dataset and everything in `data/` is gitignored. The UCI numbers in the README cannot be reproduced on the deployed app; they come from `scripts/` run locally.
   - The API key is never in git. On the cloud it comes from Streamlit secrets; locally from `.env`.

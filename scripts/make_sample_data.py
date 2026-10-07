@@ -1,7 +1,7 @@
 """Synthetic sample exports for the demo (seed 42). Not real customers, not real businesses.
 
 Run from the repo root: python scripts/make_sample_data.py
-Writes app/sample_data/kasir_indonesia.csv and app/sample_data/ecommerce.csv.
+Writes app/sample_data/kasir_indonesia.csv, ecommerce.csv and messy_export.csv.
 
 Buying pattern (not tuned to make any model win): each customer has their own order rate, starts at a
 random time, and many stop buying at a random point. Some customers order only once.
@@ -64,6 +64,22 @@ def make(out_dir=OUT, seed=42):
         'customer_email': 'fake.customer' + (e['c'] + 1).astype(str).str.zfill(3) + '@example.com',
         'quantity': e['qty'], 'unit_price': e['price'],
     }).to_csv(out_dir / 'ecommerce.csv', index=False)
+
+    # Messy export: Indonesian column names the built-in rules do not know, a product-code column that looks
+    # like an id (decoy), dates with a time. Made last, so the two files above stay byte-identical.
+    names = ['Gula 1kg', 'Minyak 2L', 'Beras 5kg', 'Kopi Bubuk', 'Teh Celup', 'Sabun Cuci']
+    lines = _lines(rng, _orders(rng), list(range(len(names))))
+    m = pd.DataFrame(lines, columns=['o', 'c', 'day', 'qty', 'p'])
+    minutes = pd.to_timedelta(rng.integers(8 * 60, 21 * 60, size=m['o'].max() + 1)[m['o']], unit='min')
+    pd.DataFrame({
+        'No. Struk': 'STR/' + (m['o'] + 20001).astype(str),
+        'Waktu Transaksi': (START + pd.to_timedelta(m['day'], unit='D') + minutes).dt.strftime('%d-%m-%Y %H:%M'),
+        'Kode Barang': 'BRG' + (m['p'] + 101).astype(str),
+        'Barang': [names[p] for p in m['p']],
+        'Pembeli': 'Pembeli Fiktif ' + (m['c'] + 1).astype(str).str.zfill(3),
+        'Banyaknya': m['qty'],
+        'Harga/Pcs': [[14500, 32000, 68000, 9500, 7000, 4500][p] for p in m['p']],
+    }).to_csv(out_dir / 'messy_export.csv', index=False)
 
 
 if __name__ == '__main__':

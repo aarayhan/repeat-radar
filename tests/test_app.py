@@ -419,3 +419,12 @@ def test_evidence_chart_takeaway_names_the_inconclusive_window(no_llm):
     assert 'its lead is clear in 14 Oct 2011 and 15 Jul 2011' in text
     assert 'In 15 Apr 2011 the interval crosses zero, so that window is not conclusive.' in text
     assert [e.label for e in at.expander][-1] == 'How this is calculated'
+
+
+def test_messy_sample_is_labelled_synthetic_and_says_to_map_by_hand_without_ai(no_llm):
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('Messy export (synthetic)')
+    at.button(key='use_sample').click().run()
+    assert any('messy_export.csv' in i.value and 'Synthetic sample.' in i.value for i in at.info)
+    assert any('Proposed by nobody (please map by hand).' in m.value for m in at.markdown)
+    assert at.button(key='confirm').disabled                     # nothing confirmed until the columns are mapped

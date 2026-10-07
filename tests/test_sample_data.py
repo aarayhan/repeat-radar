@@ -13,6 +13,7 @@ from test_llm import FakeLLM
 
 SAMPLES = Path(__file__).resolve().parents[1] / 'app' / 'sample_data'
 FILES = ['kasir_indonesia.csv', 'ecommerce.csv']
+MESSY = 'messy_export.csv'      # column names the rules do not know: needs the LLM or a person
 
 
 @pytest.fixture(scope='module')
@@ -27,7 +28,7 @@ def loaded():
 
 def test_files_match_seed_42(tmp_path):
     make(tmp_path)
-    for f in FILES:
+    for f in FILES + [MESSY]:
         assert (tmp_path / f).read_bytes() == (SAMPLES / f).read_bytes()
 
 
@@ -45,3 +46,18 @@ def test_rules_mapping_and_clean(loaded, f):
 def test_enough_history_for_two_audit_windows(loaded, f):
     a = run_audit(loaded[f][2])
     assert a['status'] == 'ok' and len(a['windows']) >= 2
+
+
+def test_messy_export_rules_cannot_map_it_but_the_true_mapping_works():
+    import json
+    raw = pd.read_csv(SAMPLES / MESSY)
+    m = propose_mapping(raw, llm=FakeLLM(LLMUnavailable('none'), LLMUnavailable('none')), model='x')
+    assert m['source'] is None and m['problems']                 # rules leave the required fields empty
+    t = json.loads((Path(__file__).resolve().parents[1] / 'scripts' / 'mapping_truth.json').read_text())[
+        'messy_export']
+    true = {f: (v[0] if isinstance(v, list) else v) for f, v in t.items() if f not in ('file', 'line_total')}
+    from app.mapping import check_values
+    assert check_values(raw, true) == []
+    inv = clean(raw, true)
+    assert inv.attrs['warnings'] == [] and inv['customer_id'].nunique() >= 250
+    assert run_audit(inv)['status'] == 'ok'
