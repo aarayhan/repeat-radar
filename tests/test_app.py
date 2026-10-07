@@ -410,3 +410,12 @@ def test_try_the_demo_loads_the_indonesian_sample(no_llm):
     assert any('kasir_indonesia.csv' in i.value and SAMPLE_NOTE in i.value for i in at.info)
     at.button(key='confirm').click().run()
     assert any('Mapping confirmed' in s.value for s in at.success)
+
+
+def test_evidence_chart_takeaway_names_the_inconclusive_window(no_llm):
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    _go(at, '4. Evidence (UCI)')
+    text = ' '.join(m.value for m in at.markdown)
+    assert 'its lead is clear in Oct 2011 and Jul 2011' in text
+    assert 'In Apr 2011 the interval crosses zero, so that window is not conclusive.' in text
+    assert [e.label for e in at.expander][-1] == 'How this is calculated'
