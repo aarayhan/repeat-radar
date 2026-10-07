@@ -28,11 +28,11 @@ from app.mapping import check_values, propose_mapping  # noqa: E402
 
 SAMPLES = {'Indonesian point of sale (synthetic)': 'kasir_indonesia.csv',
            'E-commerce (synthetic)': 'ecommerce.csv'}
-SCREENS = ['1. Upload', '2. Customers', '3. Audit', '4. Evidence (UCI)']
+SCREENS = ['1. Upload', '2. Customers', '3. Audit', '4. Results on real shop data']
 TRUST_LINE = 'We do not just make predictions. We only make them when the data shows we can trust them.'
 NO_AI_MESSAGE = 'AI suggestions are off right now, so the built-in rules were used.'
 SAMPLE_NOTE = ('Synthetic sample. Results here show how the app works, not evidence. '
-               'The evidence is on the Evidence page.')
+               'For evidence, see step 4, Results on real shop data.')
 EVIDENCE = ROOT / 'app' / 'evidence_uci.json'
 GROUPS = [('due', 'Due now'), ('overdue', 'Slipping (overdue)'), ('lapsed', 'Lapsed'), ('not_due', 'Not due yet')]
 TIER_ORDER = {'high': 0, 'medium': 1, 'low': 2}
@@ -528,7 +528,7 @@ def screen_audit():
 def screen_evidence():
     """Read-only results of our own runs on the public UCI dataset (app/evidence_uci.json, built by
     scripts/build_evidence.py). No raw data is shipped with the app."""
-    st.markdown('## Does it work on real shop data?')
+    st.markdown('## Results on real shop data')
     try:
         e = json.loads(EVIDENCE.read_text(encoding='utf-8'))
     except (OSError, ValueError):

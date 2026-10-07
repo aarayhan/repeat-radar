@@ -194,7 +194,7 @@ def _open_sample(at, sample='E-commerce (synthetic)'):
 
 
 SAMPLE_NOTE = ('Synthetic sample. Results here show how the app works, not evidence. '
-               'The evidence is on the Evidence page.')
+               'For evidence, see step 4, Results on real shop data.')
 
 
 def test_contact_list_grouped_by_intent_with_counts_and_sample_note(no_llm):
@@ -220,7 +220,7 @@ def test_contact_list_grouped_by_intent_with_counts_and_sample_note(no_llm):
 
 def test_evidence_page_without_upload(no_llm):
     at = AppTest.from_file(APP, default_timeout=180).run()
-    _go(at, '4. Evidence (UCI)')
+    _go(at, '4. Results on real shop data')
     assert not at.exception and not at.error
     assert len(at.dataframe) == 6                       # backtest, tiers, holdout, calibration, mapping, drafts
     holdout = at.dataframe[2].value
@@ -414,7 +414,7 @@ def test_try_the_demo_loads_the_indonesian_sample(no_llm):
 
 def test_evidence_chart_takeaway_names_the_inconclusive_window(no_llm):
     at = AppTest.from_file(APP, default_timeout=180).run()
-    _go(at, '4. Evidence (UCI)')
+    _go(at, '4. Results on real shop data')
     text = ' '.join(m.value for m in at.markdown)
     assert 'its lead is clear in Oct 2011 and Jul 2011' in text
     assert 'In Apr 2011 the interval crosses zero, so that window is not conclusive.' in text

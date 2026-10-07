@@ -24,7 +24,7 @@ On a locked holdout (20% of customers the model never saw, run once), the model'
   - The holdout intervals come from `python scripts/holdout_bootstrap.py`, which needs the saved holdout predictions.
   - For exact versions, install from `requirements-lock.txt`, a full `pip freeze` (60 packages) of the venv used for the holdout and evidence runs. It is for local reproduction only; the deploy uses `requirements.txt`.
   - The lock file was frozen on Windows and may include Windows-only packages. Checked: no pywin32. colorama and tzdata are there only because pytest and pandas need them on Windows; both also install elsewhere.
-  - The app's **Evidence (UCI)** page shows the same tables.
+  - The app's **Results on real shop data** page shows the same tables.
 - **The deployed app runs on two synthetic sample files.** They contain made-up customers (`scripts/make_sample_data.py`, seed 42), or your own upload. Results on the samples show how the app works; they are not evidence.
 - **The synthetic samples make the model look much better than UCI does, in absolute terms.**
   - Top-20% hit rates are 86-97% on the samples vs 71-80% on UCI, and base rates are 45-67% vs 31-43%. The made-up customers buy at steady rates with no seasonality, so they are easier to predict.

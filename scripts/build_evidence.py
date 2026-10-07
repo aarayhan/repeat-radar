@@ -1,4 +1,4 @@
-"""Build app/evidence_uci.json, the read-only Evidence (UCI) page of the app, from results already produced.
+"""Build app/evidence_uci.json (the app's read-only 'Results on real shop data' page) from results already made.
 
     python scripts/build_evidence.py
 
