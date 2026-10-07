@@ -68,7 +68,7 @@ def test_each_sample_end_to_end(no_llm, sample):
 
     _go(at, '3. Audit')
     assert not at.exception and not at.error
-    windows = at.dataframe[0].value
+    windows = next(d.value for d in at.dataframe if 'AUC model' in d.value.columns)   # in 'How this is calculated'
     assert len(windows) >= 2 and {'AUC model', 'AUC recency', 'Base rate'} <= set(windows.columns)
     assert any(m.value.startswith('Pooled over the test windows') for m in at.markdown)
 
@@ -383,3 +383,20 @@ def test_template_explanation_and_draft_are_not_reused_once_the_llm_works(monkey
     assert _sources_for_first_due_customer() == {'Explanation source: llm', 'Message source: llm'}
     st.cache_data.clear()
     st.cache_resource.clear()
+
+
+@pytest.mark.parametrize('sample, refused', [('Indonesian point of sale (synthetic)', True),
+                                             ('E-commerce (synthetic)', False)])
+def test_audit_says_plainly_when_the_model_was_not_used(no_llm, sample, refused):
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value(sample)
+    at.button(key='use_sample').click().run()
+    at.button(key='confirm').click().run()
+    _go(at, '3. Audit')
+    assert not at.exception and not at.error
+    text = ' '.join(m.value for m in at.markdown)
+    panel = 'The model was not better than the simple rule on your data, so we use the simple rule.'
+    assert (panel in text) == refused
+    assert ('so we use the simple rule.' in text) if refused else ('so we use the model.' in text)
+    if refused:
+        assert 'tied in 2 of 3 windows' in text                       # the takeaway is built from the numbers

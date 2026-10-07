@@ -18,7 +18,8 @@ import streamlit as st
 ROOT = Path(__file__).resolve().parents[1]
 sys.path.insert(0, str(ROOT))  # `streamlit run app/streamlit_app.py` puts app/ on the path, not the repo root
 from app.audit import compare_tiers, recommend, tier_track_record  # noqa: E402
-from app.charts import radar_chart, radar_frame, radar_takeaway  # noqa: E402
+from app.charts import (radar_chart, radar_frame, radar_takeaway, window_bars,  # noqa: E402
+                        window_takeaway)
 from app.engine import clean  # noqa: E402
 from app.drafts import draft_facts, intents, llm_draft, typical_gap, usual_products  # noqa: E402
 from app.explain import customer_facts, llm_explanation, template_message  # noqa: E402
@@ -354,6 +355,11 @@ def confirmed_result(next_step):
     return result
 
 
+def plain(text):
+    """Display wording only: the app calls the recency rule 'the simple rule'."""
+    return text.replace('recency rule', 'simple rule').replace(' vs recency ', ' vs simple rule ')
+
+
 def takeaway(text):
     st.markdown(f'<p class="rr-takeaway">{html.escape(text)}</p>', unsafe_allow_html=True)
 
@@ -400,7 +406,7 @@ def screen_customers():
     with st.expander('How this is calculated'):
         st.markdown(
             f"- **Ranking:** {'a model trained on earlier order history' if r['ranker'] == 'model' else 'most recent buyers first (the simple rule)'}. "
-            f"Why: {a['ranker_reason']}.\n"
+            f"Why: {plain(a['ranker_reason'])}.\n"
             '- **Tiers:** high = top 20% of the ranking, medium = next 30%, low = the rest.\n'
             "- **Next step:** days since the last order compared with the customer's usual gap. Not due below 0.8 x "
             'the gap, due from 0.8 to 1.5 x, slipping above 1.5 x, lapsed after 365 days. These are simple rules, '
@@ -460,39 +466,50 @@ def screen_customers():
 # ---------- screen 3: audit ----------
 
 def screen_audit():
-    st.header('3. Audit')
+    st.markdown('## How often this was right')
     r = confirmed_result('see how often this was right')
     if r is None:
         return
     a, w = r['audit'], r['audit']['windows']
-    st.subheader('Each test window: model vs recency rule')
-    st.dataframe(pd.DataFrame({
-        'Test window starts': w['origin'].dt.strftime('%Y-%m-%d'), 'Customers': w['n'],
-        'Base rate': w['base_rate'].map(pct),
-        'AUC model': w['auc_model'].round(3), 'AUC recency': w['auc_recency'].round(3),
-        'Top-20% hit model': w['top20_model'].map(pct), 'Top-20% hit recency': w['top20_recency'].map(pct),
-    }), hide_index=True, width='stretch')
-    st.caption('Base rate: share of all scored customers who ordered again within 8 weeks. '
-               'Top-20% hit: the same share among the top 20% of each ranking.')
+    if r['ranker'] == 'recency':
+        st.markdown('<div class="rr-panel"><h3>Why we did not use the model</h3><p>The model was not better than '
+                    'the simple rule on your data, so we use the simple rule.</p></div>', unsafe_allow_html=True)
+    st.markdown('### The model and the simple rule, test by test')
+    st.altair_chart(window_bars(w), width='stretch', theme=None)
+    takeaway(window_takeaway(w, r['ranker']))
+    st.caption('Bars: share of the top 20% of each list who ordered again within 8 weeks. Dashed line: the same '
+               'share among all customers (the base rate).')
 
-    st.subheader('Each tier: model vs recency rule')
+    st.markdown('### Each tier compared')
     m, rr = r['records']['model'], r['records']['recency']
     fmt = lambda row: f"{pct(row['pooled'])} ({pct(row['min'])} to {pct(row['max'])})"  # noqa: E731
     st.dataframe(pd.DataFrame({'Tier': list(m.index), 'Model': [fmt(x) for _, x in m.iterrows()],
-                               'Recency rule': [fmt(x) for _, x in rr.iterrows()]}),
+                               'Simple rule': [fmt(x) for _, x in rr.iterrows()]}),
                  hide_index=True, width='stretch')
-    st.caption('Pooled share who ordered again within 8 weeks (lowest to highest test window).')
-    st.write(compare_tiers(m, rr))
+    st.write(plain(compare_tiers(m, rr)))
 
-    st.subheader('Refusal rules')
+    st.markdown('### Checks that can stop a prediction')
     n1 = len(r['not_scored'])
     st.write(f"1. Fewer than 2 orders: {'triggered' if n1 else 'not triggered'}"
              + (f', {n1:,} customers not scored.' if n1 else '.'))
     st.write('2. Too little history: not triggered'
              + (f" (windows dropped: {'; '.join(a['skipped'])})." if a['skipped'] else '.'))
-    st.write('3. Model must beat the recency rule in every window: '
-             + ('triggered, using the recency rule' if r['ranker'] == 'recency' else 'not triggered')
-             + f" ({a['ranker_reason']}).")
+    st.write('3. The model must beat the simple rule in every window: '
+             + ('triggered, using the simple rule' if r['ranker'] == 'recency' else 'not triggered')
+             + f" ({plain(a['ranker_reason'])}).")
+
+    with st.expander('How this is calculated'):
+        st.dataframe(pd.DataFrame({
+            'Test window starts': w['origin'].dt.strftime('%Y-%m-%d'), 'Customers': w['n'],
+            'Base rate': w['base_rate'].map(pct),
+            'AUC model': w['auc_model'].round(3), 'AUC recency': w['auc_recency'].round(3),
+            'Top-20% hit model': w['top20_model'].map(pct), 'Top-20% hit recency': w['top20_recency'].map(pct),
+        }), hide_index=True, width='stretch')
+        st.caption('Each test window hides the last 8 weeks of a past point in your file, ranks customers with '
+                   'only the data before it, then checks who really ordered. Base rate: share of all scored '
+                   'customers who ordered again. Top-20% hit: the same share among the top 20% of each ranking. '
+                   'AUC: how well each ranking separates buyers from non-buyers (0.5 is chance). Tier shares are '
+                   'pooled over the windows (lowest to highest window in brackets).')
 
 
 # ---------- screen 4: evidence (UCI) ----------

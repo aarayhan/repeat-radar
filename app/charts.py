@@ -102,24 +102,35 @@ def window_label(origin):
 
 
 def window_bars(windows, height=260):
-    """Grouped bars per test window: top-20% hit rate of the model and of the simple rule; base rate as a
-    dashed line. windows needs origin, top20_model, top20_recency, base_rate."""
-    w = windows.assign(window=windows['origin'].map(window_label))
-    order = list(w['window'])
-    long = pd.concat([w.assign(method='Model', value=w['top20_model']),
-                      w.assign(method='Simple rule', value=w['top20_recency'])])
-    x = alt.X('window:N', sort=order, title=None, axis=alt.Axis(labelAngle=0, labelFontSize=12))
+    """Grouped bars per test window: top-20% hit rate of the model and of the simple rule; base rate as a dashed
+    line across the group. Drawn on a numeric x axis (window index) so the dashed line can span the group.
+    windows needs origin, top20_model, top20_recency, base_rate."""
+    w = windows.reset_index(drop=True)
+    labels = [window_label(o) for o in w['origin']]
+    rows = []
+    for i, r in w.iterrows():
+        rows.append({'method': 'Model', 'value': r['top20_model'], 'x': i - 0.41, 'x2': i - 0.02, 'mid': i - 0.215})
+        rows.append({'method': 'Simple rule', 'value': r['top20_recency'], 'x': i + 0.02, 'x2': i + 0.41,
+                     'mid': i + 0.215})
+    long = pd.DataFrame(rows)
+    base = pd.DataFrame({'x': [i - 0.47 for i in range(len(w))], 'x2': [i + 0.47 for i in range(len(w))],
+                         'base_rate': w['base_rate'], 'window': labels})
+    axis = alt.Axis(values=list(range(len(w))), labelExpr=f"{labels}[datum.value]", title=None, grid=False,
+                    labelFontSize=12, ticks=False, domain=False)
+    xs = alt.Scale(domain=[-0.6, len(w) - 0.4])
     yv = alt.Y('value:Q', title='Share of the top 20% who ordered again', scale=alt.Scale(domain=[0, 1]),
                axis=alt.Axis(format='%', tickCount=5))
     color = alt.Color('method:N', scale=alt.Scale(domain=list(METHOD_COLORS), range=list(METHOD_COLORS.values())),
                       legend=alt.Legend(title=None, orient='top'))
     bars = alt.Chart(long).mark_bar(cornerRadiusTopLeft=3, cornerRadiusTopRight=3).encode(
-        x, yv, xOffset=alt.XOffset('method:N', sort=list(METHOD_COLORS)), color=color)
-    labels = alt.Chart(long).mark_text(dy=-7, fontSize=11, color=INK).encode(
-        x, yv, xOffset=alt.XOffset('method:N', sort=list(METHOD_COLORS)), text=alt.Text('value:Q', format='.0%'))
-    base = alt.Chart(w).mark_tick(color=INK, thickness=2, size=90, opacity=0.55, strokeDash=[5, 3]).encode(
-        x, alt.Y('base_rate:Q'), tooltip=[alt.Tooltip('base_rate:Q', title='Base rate', format='.0%')])
-    return alt.layer(bars, labels, base).properties(height=height).configure(font=FONT, background='transparent')
+        alt.X('x:Q', scale=xs, axis=axis), x2='x2:Q', y=yv, color=color,
+        tooltip=[alt.Tooltip('method:N', title='Ranking'), alt.Tooltip('value:Q', title='Top 20%', format='.0%')])
+    text = alt.Chart(long).mark_text(dy=-7, fontSize=11, color=INK).encode(
+        alt.X('mid:Q', scale=xs), yv, text=alt.Text('value:Q', format='.0%'))
+    rule = alt.Chart(base).mark_rule(color=INK, strokeWidth=2, strokeDash=[6, 4]).encode(
+        alt.X('x:Q', scale=xs), x2='x2:Q', y='base_rate:Q',
+        tooltip=[alt.Tooltip('window:N', title='Window'), alt.Tooltip('base_rate:Q', title='Base rate', format='.0%')])
+    return alt.layer(bars, rule, text).properties(height=height).configure(font=FONT, background='transparent')
 
 
 def window_takeaway(windows, ranker):
