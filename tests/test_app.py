@@ -441,3 +441,24 @@ def test_step_labels_do_not_change_when_the_mapping_is_confirmed(no_llm):
     assert any('Mapping confirmed' in s.value for s in at.success)
     assert list(at.sidebar.radio(key='screen').options) == before == ['1. Upload', '2. Customers', '3. Audit',
                                                                        '4. Results on real shop data']
+
+
+def test_picking_a_customer_on_the_kasir_demo_stays_on_step_2(no_llm):
+    """Picking a customer must not send the app back to step 1. AppTest runs the script on the server side only: it
+    does not cover browser reruns (the widget values a real browser sends back, timing, the deployed iframe). The
+    browser check (step still 2 at 0.5 s and after the run) was done by hand with Playwright; the repo has no
+    Playwright tests. Here 'at 0.5 s' is the pick run itself, 'after the run finishes' is one more plain rerun."""
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.button(key='try_demo').click().run()
+    at.button(key='confirm').click().run()
+    assert any('Mapping confirmed' in s.value for s in at.success)
+    _go(at, '2. Customers')
+    first = at.selectbox(key='customer').value
+    other = next(c for c in _customers(at)['Customer'] if c != str(first))
+    at.selectbox(key='customer').set_value(other).run()
+    assert not at.exception and not at.error
+    assert at.sidebar.radio(key='screen').value == '2. Customers'
+    assert str(at.selectbox(key='customer').value) == other
+    at.run()
+    assert at.sidebar.radio(key='screen').value == '2. Customers'
+    assert str(at.selectbox(key='customer').value) == other
