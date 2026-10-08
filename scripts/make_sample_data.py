@@ -65,8 +65,9 @@ def make(out_dir=OUT, seed=42):
         'quantity': e['qty'], 'unit_price': e['price'],
     }).to_csv(out_dir / 'ecommerce.csv', index=False)
 
-    # Messy export: Indonesian column names the built-in rules do not know, a product-code column that looks
-    # like an id (decoy), dates with a time. Made last, so the two files above stay byte-identical.
+    # Messy export: Indonesian column names the built-in rules do not know, dates with a time. Kode Barang is a
+    # product code column (a valid product mapping, like Barang), not a decoy; this sample has no decoy column.
+    # Made last, so the two files above stay byte-identical.
     names = ['Gula 1kg', 'Minyak 2L', 'Beras 5kg', 'Kopi Bubuk', 'Teh Celup', 'Sabun Cuci']
     lines = _lines(rng, _orders(rng), list(range(len(names))))
     m = pd.DataFrame(lines, columns=['o', 'c', 'day', 'qty', 'p'])

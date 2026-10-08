@@ -652,3 +652,12 @@ A grep of every added or removed line in the history for "FEATHERLESS", "sk-" an
 - the synthetic-sample label on screens 1-3;
 - the contact list grouped by intent (Due now, Slipping, Lapsed, Not due yet; by tier, then rank, with counts);
 - an app-wide daily LLM cap (`LLM_DAILY_CAP`, default 500, in memory) on top of the per-session cap.
+
+## 13. Messy export sample through the real flow (2026-10-07, local main)
+
+- **File:** `app/sample_data/messy_export.csv` (Messy export (synthetic)), from `scripts/make_sample_data.py`, seed 42. 300 made-up customers, 3,097 invoices, 6,233 rows. Indonesian column names the built-in rules do not know: Pembeli, No. Struk, Waktu Transaksi, Barang, Banyaknya, Harga/Pcs, plus Kode Barang (a product code column). There is no decoy column.
+- **Truth:** the true mapping was written to `scripts/mapping_truth.json` and committed (`2d498da`) before any LLM call. For product it accepts `Barang` or `Kode Barang`.
+- **Rules:** proposed no required field. Their only proposal was product = Kode Barang.
+- **LLM** (Qwen/Qwen2.5-7B-Instruct on Featherless, one real run): mapped every field correctly, per the truth file. All code checks passed on its proposal.
+- **Product:** the LLM chose the code column (Kode Barang), which the truth accepts. Drafts on this sample would therefore cite codes (for example BRG103) unless the user switches product to Barang.
+- **Screen:** "Proposed by the LLM", a warning that the LLM and the rules disagree, both proposals side by side, and a "Start from" choice. After picking the LLM proposal and confirming: "Mapping confirmed. 3,097 invoices from 300 customers, 3 Jan 2023 to 31 Dec 2024." Screenshot: `docs/ui/messy_2_confirmed_desktop.png`.
