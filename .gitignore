@@ -229,3 +229,6 @@ data/*
 .streamlit/secrets.toml
 *.zip
 !app/sample_data/*.csv
+
+# demo recordings (videos, hook.html): never committed
+recordings/
