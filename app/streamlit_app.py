@@ -29,7 +29,9 @@ def main():
     st.sidebar.caption('Who is likely to order again within 8 weeks, and how often that was right before.')
     status = {SCREENS[0]: 'start here' if not ready else 'done', SCREENS[1]: 'ready' if ready else 'locked',
               SCREENS[2]: 'ready' if ready else 'locked', SCREENS[3]: 'always open'}
-    screen = st.sidebar.radio('Steps', SCREENS, key='screen', format_func=lambda x: f'{x} ({status[x]})')
+    # The labels must never change: a browser stores the chosen label and sends it back on every rerun, and a label
+    # that no longer matches makes Streamlit fall back to step 1. The status changes, so it goes in the captions.
+    screen = st.sidebar.radio('Steps', SCREENS, key='screen', captions=[status[s] for s in SCREENS])
     st.sidebar.caption(f'You are on step {SCREENS.index(screen) + 1} of {len(SCREENS)}.'
                        + ('' if ready else ' Steps 2 and 3 unlock after you confirm the column mapping.'))
     try:

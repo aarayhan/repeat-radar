@@ -428,3 +428,16 @@ def test_messy_sample_is_labelled_synthetic_and_says_to_map_by_hand_without_ai(n
     assert any('messy_export.csv' in i.value and 'Synthetic sample.' in i.value for i in at.info)
     assert any('Proposed by nobody (please map by hand).' in m.value for m in at.markdown)
     assert at.button(key='confirm').disabled                     # nothing confirmed until the columns are mapped
+
+
+def test_step_labels_do_not_change_when_the_mapping_is_confirmed(no_llm):
+    """A browser stores the step radio's value as its label text and sends it back on every rerun. If the labels
+    change (they once carried 'locked'/'ready'), the stored text matches nothing and the app falls back to step 1:
+    picking a customer on step 2 sent people back to Upload. The status goes in captions, not in the labels."""
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    before = list(at.sidebar.radio(key='screen').options)
+    _open_sample(at)
+    at.button(key='confirm').click().run()
+    assert any('Mapping confirmed' in s.value for s in at.success)
+    assert list(at.sidebar.radio(key='screen').options) == before == ['1. Upload', '2. Customers', '3. Audit',
+                                                                       '4. Results on real shop data']
