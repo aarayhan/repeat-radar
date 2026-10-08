@@ -232,3 +232,6 @@ data/*
 
 # demo recordings (videos, hook.html): never committed
 recordings/
+
+# demo voice-over (raw voice files): never committed
+audio/
