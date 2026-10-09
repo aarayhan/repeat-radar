@@ -2,7 +2,7 @@
 
 > ForgeHacks 2026, track **AI + Business**. Built solo during the event (Oct 3-10, 2026).
 
-**Status:** work in progress. This README is rewritten before submission.
+Live app: https://repeat-radar.streamlit.app/ | Demo video: https://youtu.be/aZUIU5drWiA
 
 ## We do not just make predictions. We only make them when the data shows we can trust them.
 
@@ -25,7 +25,7 @@ On a locked holdout (20% of customers the model never saw, run once), the model'
   - For exact versions, install from `requirements-lock.txt`, a full `pip freeze` (60 packages) of the venv used for the holdout and evidence runs. It is for local reproduction only; the deploy uses `requirements.txt`.
   - The lock file was frozen on Windows and may include Windows-only packages. Checked: no pywin32. colorama and tzdata are there only because pytest and pandas need them on Windows; both also install elsewhere.
   - The app's **Results on real shop data** page shows the same tables.
-- **The deployed app runs on three synthetic sample files** (the third, a messy export, has column names the built-in rules do not know). They contain made-up customers (`scripts/make_sample_data.py`, seed 42), or your own upload. Results on the samples show how the app works; they are not evidence.
+- **The deployed app runs on three synthetic sample files** (Indonesian POS, e-commerce, messy export; the messy export has column names the built-in rules do not know). They contain made-up customers (`scripts/make_sample_data.py`, seed 42), or your own upload. Results on the samples show how the app works; they are not evidence.
 - **The synthetic samples make the model look much better than UCI does, in absolute terms.**
   - Top-20% hit rates are 86-97% on the samples vs 71-80% on UCI, and base rates are 45-67% vs 31-43%. The made-up customers buy at steady rates with no seasonality, so they are easier to predict.
   - The model's lead over the recency rule is not bigger on the samples. On the Indonesian sample the model only ties the rule in 2 of 3 windows, so the app uses the rule.
@@ -42,7 +42,7 @@ Small B2B sellers keep sales history in exports and spreadsheets, but rarely see
 ## What it does
 
 1. **Upload** a messy sales export (any column names). An LLM and built-in rules both propose a column mapping; code checks it (values, and one customer and one date per invoice). If they disagree, the app shows both and you pick. You always confirm.
-2. **Contact list**: customers ranked and grouped into high, medium and low tiers. Each tier shows how often it was right in past test windows on your own data, not a probability. Each customer gets a short reason from their own orders (when the AI writes it, code checks only that every invoice number it cites is the customer's; dates and counts in it are not checked) and a draft follow-up message checked by code.
+2. **Contact list**: customers ranked and grouped into high, medium and low tiers. Each tier shows how often it was right in past test windows on your own data, not a probability. Each customer gets a short reason from their own orders (when the AI writes it, code checks only that every invoice number it cites is the customer's and that it names no currency; dates and counts in it are not checked) and a draft follow-up message checked by code.
 3. **Audit**: the model is tested on your own history against the base rate and a simple recency rule. Customers with too little history are not scored, and the app says why.
 
 If the model does not beat the simple rule on your data, the app says so.
@@ -62,11 +62,12 @@ Everything in this repository was created after kickoff (Oct 3, 2026). No code i
 
 ## What works and what does not
 
-Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (UCI Online Retail II). No real user has tried the app.
+Status on 2026-10-09. Numbers are from our own scripts, on one public dataset (UCI Online Retail II). No real user has tried the app.
 
 **Works**
+- Live app: https://repeat-radar.streamlit.app/
 - The Streamlit app runs end to end without an API key:
-  - upload a CSV/XLSX, or use one of two synthetic sample files;
+  - upload a CSV/XLSX, or use one of three synthetic sample files (Indonesian POS, e-commerce, messy export);
   - confirm the column mapping;
   - see the contact list in three tiers;
   - see the audit.
@@ -79,7 +80,7 @@ Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (U
   - customers with fewer than 2 orders;
   - files with too little history: fewer than 2 test windows that each have at least 50 customers with 2 or more earlier orders;
   - if the model does not beat the simple rule, it says so and uses the rule.
-- Column mapping by rules works on 3 differently shaped exports (UCI and two synthetic ones).
+- Column mapping by rules works on 3 differently shaped exports (UCI, the Indonesian POS sample and the e-commerce sample). The messy export sample has to be mapped by hand or by the LLM.
 - Text dates are read safely: day-first and month-first are detected, conflicting orders and 2-digit years are refused, and unreadable rows are counted.
 
 **Does not work, or is weaker than it sounds**
@@ -96,18 +97,17 @@ Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (U
   - the verifier caught 15 of 15 hand-written bad drafts.
 
   The app now shows the LLM draft in English (labeled, with a template fallback); Indonesian drafts are still templates. The verifier cannot catch claims it has no rule for, so drafts must be read before sending.
-  Without a product column, the draft check blocks capitalized multi-word product-like names. It can miss a name that starts a sentence or is lowercase.
-- Human review of 20 run-3 drafts:
+- Human review of 20 LLM drafts from a third draft run (2026-10-06):
   - the developer rated 20 of 20 sendable as is;
   - a second review by an AI assistant rated 14 sendable, 5 needing small edits (assumptions about use, awkward wording) and 1 not sendable;
   - an independent rating by someone outside the project is pending.
 
   The developer is not an independent rater, and neither is the assistant. The draft rated not sendable claims "we've got some new styles" with no data behind it. That is an invented claim the verifier does not catch.
-- The LLM explanation on screen 2 has not been checked against a real model; without a key it uses a template.
+- The app uses Featherless (Qwen2.5-7B). In the final check we found the model invented a currency amount (in the explanation) and a product name (in the draft) on the Indonesian sample, which has no product column. Fixed by rejecting currency symbols and codes, and, when no product column is mapped, capitalized multi-word product-like names. The check can still miss a name that starts a sentence or is lowercase. The 20-draft ratings do not cover the no-product case.
 - In the middle tier, the simple recency rule finds more returning customers than the model (49% vs 43% on all customers). The model's advantage is in the top tier.
 - One dataset, B2B gift-ware, 2009-2011. The data ends in 2011, so there is no test on later time periods. The October 2011 window was seen while designing the method.
-- Not deployed yet.
 - Exports with only a line total (no quantity and unit price) are not supported.
+- Not validated with a real user. A validation request was sent to staff of a real shop; no reply yet.
 
 ## Data
 
@@ -119,6 +119,8 @@ No real customer data is stored in this repository.
 
 AI coding assistants (Claude) were used while building. LLM calls inside the app go through Featherless.
 
+The demo screen recording was automated with Playwright, and the video was assembled with ffmpeg through Claude Code. The voice-over is by the developer.
+
 ## Run locally
 
 ```bash
@@ -128,8 +130,3 @@ pip install -r requirements.txt
 cp .env.example .env   # then add your key
 streamlit run app/streamlit_app.py
 ```
-
-## Limits (so far)
-
-- Tested on one dataset (UK wholesale gift-ware, 2009-2011).
-- Not validated with a real user yet.
