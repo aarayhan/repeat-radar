@@ -124,8 +124,33 @@ def test_verified_llm_draft_is_labelled(monkeypatch):
     _pick_customer(at, due=True)
     assert not at.exception and not at.error
     captions = [c.value for c in at.caption]
-    assert 'Message source: llm' in captions and any(c.startswith('Checked by code') for c in captions)
+    assert 'Message source: llm' in captions                                  # ecommerce.csv has no product column
+    assert any(c.startswith('No product column in this file, so no product names are used.') for c in captions)
+    assert not any(c.startswith('Checked by code: products') for c in captions)
     assert 'Explanation source: template' in captions
+    st.cache_data.clear()
+
+
+def test_products_note_when_the_file_has_a_product_column(monkeypatch):
+    import streamlit as st
+    import app.llm as llm_mod
+    import app.mapping as mapping_mod
+    mapping = {'customer_id': 'Pembeli', 'invoice_id': 'No. Struk', 'date': 'Waktu Transaksi',
+               'quantity': 'Banyaknya', 'price': 'Harga/Pcs', 'country': None, 'product': 'Barang'}
+    monkeypatch.setattr(mapping_mod, 'map_columns', lambda *a, **k: (mapping, []))
+    monkeypatch.setattr(llm_mod, 'client', lambda: (_PromptFake(), 'fake'))
+    st.cache_data.clear()
+    at = AppTest.from_file(APP, default_timeout=180).run()
+    at.selectbox(key='sample_choice').set_value('Messy export (synthetic)')   # has a product column
+    at.button(key='use_sample').click().run()
+    at.radio[0].set_value('LLM proposal').run()
+    at.button(key='confirm').click().run()
+    _go(at, '2. Customers')
+    _pick_customer(at, due=True)
+    assert not at.exception and not at.error
+    captions = [c.value for c in at.caption]
+    assert 'Message source: llm' in captions and any(c.startswith('Checked by code: products') for c in captions)
+    assert not any(c.startswith('No product column') for c in captions)
     st.cache_data.clear()
 
 

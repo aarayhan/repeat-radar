@@ -113,7 +113,11 @@ def screen_customers():
     st.code(msg, language=None, wrap_lines=True)
     st.caption(f'Message source: {msg_source}')
     cap_notice()
-    if msg_source != 'template':
+    if msg_source != 'template' and lines is None:     # no product column mapped
+        st.caption('No product column in this file, so no product names are used. Checked by code: no duration is '
+                   'written and no blocked promise appears. The check cannot catch every claim, so read it before '
+                   'sending.')
+    elif msg_source != 'template':
         st.caption('Checked by code: products and dates match this customer\'s facts, no duration is written, and no '
                    'blocked promise (discount, free shipping, stock, deadline, drop by...) appears. The check cannot '
                    'catch every claim, so read it before sending.')

@@ -96,6 +96,7 @@ Status on 2026-10-05. Numbers are from our own scripts, on one public dataset (U
   - the verifier caught 15 of 15 hand-written bad drafts.
 
   The app now shows the LLM draft in English (labeled, with a template fallback); Indonesian drafts are still templates. The verifier cannot catch claims it has no rule for, so drafts must be read before sending.
+  Without a product column, the draft check blocks capitalized multi-word product-like names. It can miss a name that starts a sentence or is lowercase.
 - Human review of 20 run-3 drafts:
   - the developer rated 20 of 20 sendable as is;
   - a second review by an AI assistant rated 14 sendable, 5 needing small edits (assumptions about use, awkward wording) and 1 not sendable;
