@@ -50,3 +50,13 @@ def test_llm_unchecked_answer_falls_back(reply):
 def test_client_error_and_no_client_fall_back():
     assert llm_explanation(FACTS, 'id', (FakeLLM(TimeoutError('slow')), 'x')) == template_explanation(FACTS, 'id')
     assert llm_explanation(FACTS, 'en', None) == template_explanation(FACTS, 'en')
+
+
+@pytest.mark.parametrize('reply', [
+    'A significant order of $635,000 on invoice NT-100020.',
+    'Pesanan besar Rp 40.000 pada nota NT-100020.',
+    'Invoice NT-100020 was worth 40000 USD.',
+    'Invoice NT-100020 was worth EUR 40000.',
+])
+def test_currency_in_explanation_falls_back(reply):   # amounts in the data have no currency; any currency is invented
+    assert llm_explanation(FACTS, 'en', (FakeLLM(reply), 'x')) == template_explanation(FACTS, 'en')

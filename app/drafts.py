@@ -8,7 +8,8 @@ order date, and words a short message. Code then checks the draft:
 - "miss you / miss working / miss your" unless the intent is overdue or lapsed;
 - "enjoying" and "hope you like" when the intent is lapsed (do not assume they still use the product);
 - no duration of any kind (digits or words with day/week/month/year; "a while" is allowed);
-- a catalogue product that is not one of the customer's usual products is rejected;
+- a catalogue product that is not one of the customer's usual products is rejected; with no product data (no
+  catalogue), any capitalized multi-word name is rejected, since the LLM would have invented it;
 - every other number and date must match a fact.
 A verified draft is "specific" if it mentions at least one usual product (normalized match, full name or its
 first 3 words); otherwise "generic". One repair attempt (temperature 0.7), then a plain template.
@@ -147,6 +148,16 @@ def _mentions(product, norm_text):
     return bool(p) and (_has(' '.join(p), norm_text) or (len(p) >= 3 and _has(' '.join(p[:3]), norm_text)))
 
 
+def _capitalized_names(text):
+    """Runs of 2+ capitalized words, not counting a sentence's first word ('... our Chocolate Delights')."""
+    # ponytail: misses a name that opens a sentence or is written lowercase; also catches sign-offs and shop names,
+    # which only costs a fall back to the template
+    names = []
+    for sentence in re.split(r'(?<=[.!?])\s+|\n+', text):
+        names += re.findall(r"\b[A-Z][a-z']+(?:\s+[A-Z][a-z']+)+", ' '.join(sentence.split()[1:]))
+    return names
+
+
 def _remove_dates(text, last, problems):
     """Find dates in lowercase text; each must be the last order date. Returns the text without them."""
     month = r'(' + '|'.join(MONTHS) + r')'
@@ -190,6 +201,10 @@ def verify(text, facts, catalogue=()):
         n = normalize(name)
         if len(n) >= MIN_PRODUCT_LEN and _has(n, norm_all) and not any(n in a for a in allowed):
             problems.append(f'product not in the facts: {str(name).strip()!r}')
+    if not catalogue:                                        # no product data: block names that look like products
+        for name in _capitalized_names(text):
+            if not any(normalize(name) in a for a in allowed):
+                problems.append(f'product not in the facts: {name!r}')
 
     last = time.strptime(facts['last_order'], '%Y-%m-%d')
     rest = normalize(_remove_dates(low, last, problems))
@@ -225,8 +240,10 @@ PURPOSE = {'due': 'a friendly restock reminder: their usual reorder time has com
 
 def _prompt(facts):
     return ('Write a short follow-up message (2 or 3 sentences, English) from a small wholesaler to a business '
-            f"customer. Purpose: {PURPOSE[facts['intent']]}. Mention at least one product name exactly as written "
-            'in the facts. Do not mention how long it has been (no days, weeks, months or years) and do not add any '
+            f"customer. Purpose: {PURPOSE[facts['intent']]}. "
+            + ('Mention at least one product name exactly as written in the facts. ' if facts['usual_products'] else
+               'The facts have no product names, so do not name any product. ')
+            + 'Do not mention how long it has been (no days, weeks, months or years) and do not add any '
             'number, date or product that is not in the facts. Do not mention prices, discounts, offers, free items, '
             'stock or deadlines. Customers order remotely, so do not invite them to drop by.\n'
             'Return ONLY a JSON object: {"message": "<the message>"}\n'

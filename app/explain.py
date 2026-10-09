@@ -1,7 +1,8 @@
 """Why a customer is on the list, and a draft follow-up message. Facts come from code; the LLM only words them.
 
 Only one customer's facts are ever sent to the LLM. Its answer is checked in code: every invoice number it
-mentions must be one of this customer's, and it must mention at least one. Otherwise the template is used.
+mentions must be one of this customer's, it must mention at least one, and it must not name a currency (amounts in
+the data have none). Otherwise the template is used.
 Every text function returns (text, source) with source 'llm' or 'template'.
 """
 import json
@@ -59,11 +60,15 @@ def _mentioned_ids(text, known):
     return set(re.findall(pattern, text))
 
 
+CURRENCY = re.compile(r'[$€£¥]|(?<![A-Za-z])(?:Rp|USD|EUR|IDR)(?![A-Za-z])', re.IGNORECASE)
+
+
 def check_citations(text, facts):
-    """Every invoice number mentioned must be one of the customer's, and at least one must be mentioned."""
+    """Every invoice number mentioned must be one of the customer's, and at least one must be mentioned.
+    No currency symbol or code: the data has bare amounts, so any currency is invented."""
     known = {o['invoice_id'] for o in facts['last_orders']}
     found = _mentioned_ids(text or '', known)
-    return bool(found) and found <= known
+    return bool(found) and found <= known and not CURRENCY.search(text)
 
 
 def llm_explanation(facts, lang='en', client=None):
@@ -73,7 +78,7 @@ def llm_explanation(facts, lang='en', client=None):
     llm, model = client
     prompt = (f"In {LANGS[lang]}, write two short sentences for a sales person explaining why this customer "
               f"is in the '{facts['tier']}' tier of the follow-up list. Use only these facts and do not add numbers "
-              f"that are not in them. Cite at least one invoice number exactly as written.\n"
+              f"that are not in them and no currency. Cite at least one invoice number exactly as written.\n"
               f"Facts: {json.dumps(facts)}")
     try:
         r = llm.chat.completions.create(model=model, messages=[{'role': 'user', 'content': prompt}],

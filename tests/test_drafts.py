@@ -177,3 +177,14 @@ def test_json_failure_and_no_client():
     r = llm_draft(DUE, (FakeLLM(TimeoutError('slow')), 'x'), CATALOGUE)
     assert r['source'] == 'template' and r['attempts'][0][1] == ['API error: TimeoutError']
     assert llm_draft(DUE, None)['source'] == 'template'
+
+
+def test_no_product_data_blocks_invented_product_names():   # kasir_indonesia.csv has no product column
+    f = draft_facts(ORDERS, [], 'Toko A', 'high', 0.75, 30)
+    invented = 'Hi, it is time to restock your shelves with our delicious Chocolate Delights. Just reply to order.'
+    assert any('Chocolate Delights' in p for p in verify(invented, f, ()))
+    assert verify('Hi, would you like to place your next order? Just reply to this message.', f, ()) == []
+    assert verify(template_draft(f), f, ()) == []
+    llm = FakeLLM(_msg(invented), _msg(invented))
+    r = llm_draft(f, (llm, 'x'), ())
+    assert r['source'] == 'template' and 'no product names' in llm.calls[0][0]['content']
